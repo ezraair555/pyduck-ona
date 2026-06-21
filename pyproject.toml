@@ -1,0 +1,117 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyduck-ona"
+version = "0.1.1"
+description = "DuckDB-native People Analytics and Organizational Network Analysis (ONA) for HR data"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "John C. Vallier", email = "jcvallier.cpa@gmail.com"},
+]
+maintainers = [
+    {name = "EzraAir555", email = "noreply@ezraair555.ai"},
+]
+keywords = [
+    "duckdb", "hr", "people-analytics", "organizational-network-analysis",
+    "ona", "hierarchy", "span-of-control", "duckpgq", "broom",
+    "pyduck-janitor", "relational-api",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Human Resources Professionals",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Typing :: Typed",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "duckdb>=1.0",
+    "pyarrow>=15.0",
+    "networkx>=3.2",
+    "igraph>=0.11",
+    "pandas>=2.0",
+    "polars>=1.0",
+]
+
+[project.optional-dependencies]
+viz = [
+    "matplotlib>=3.8",
+    "pyvis>=0.3",
+]
+graph = [
+    # Currently a placeholder — DuckPGQ is not installable from the
+    # DuckDB community-extension registry on current releases. We keep
+    # the slot so the API surface stays stable; the NetworkX backend
+    # is already available from the runtime deps.
+    "duckpgq>=0.10; python_version < '0'",  # never matches; reserved
+]
+stats = [
+    "statsmodels>=0.14",
+]
+broom = [
+    "broom-sm @ git+https://github.com/ezraair555/broom-sm",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.23",
+    "mypy>=1.8",
+    "ruff>=0.3",
+    "black>=24.0",
+    "isort>=5.13",
+    "pyduck-janitor>=0.1",
+    "statsmodels>=0.14",
+]
+
+[project.urls]
+Homepage = "https://github.com/ezraair555/pyduck-ona"
+Repository = "https://github.com/ezraair555/pyduck-ona"
+Issues = "https://github.com/ezraair555/pyduck-ona/issues"
+Documentation = "https://github.com/ezraair555/pyduck-ona#readme"
+Changelog = "https://github.com/ezraair555/pyduck-ona/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["pyduck_ona*"]
+
+[tool.setuptools.package-data]
+pyduck_ona = ["py.typed"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "TCH", "PT"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests that require duckpgq extension",
+]
