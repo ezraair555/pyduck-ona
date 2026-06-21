@@ -189,8 +189,13 @@ class TestANOVA:
         groups = [hr_data[hr_data["department"] == d]["salary"].values
                   for d in ["Eng", "Ops", "Sales", "HR"]]
         fig, ax = plt.subplots(figsize=(7, 5))
-        bp = ax.boxplot(groups, labels=["Eng", "Ops", "Sales", "HR"],
-                        patch_artist=True, showmeans=True)
+        # matplotlib >=3.9 renamed `labels=` to `tick_labels=`; support both.
+        try:
+            bp = ax.boxplot(groups, tick_labels=["Eng", "Ops", "Sales", "HR"],
+                            patch_artist=True, showmeans=True)
+        except TypeError:
+            bp = ax.boxplot(groups, labels=["Eng", "Ops", "Sales", "HR"],
+                            patch_artist=True, showmeans=True)
         for patch, color in zip(bp["boxes"],
                                  ["#4C72B0", "#DD8452", "#55A467", "#C44E52"]):
             patch.set_facecolor(color)

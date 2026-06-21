@@ -253,6 +253,10 @@ Maintained by EzraAir555.
 
 ## Changelog
 
+### 0.1.4 — Matplotlib 3.11 compatibility
+
+- Fixed `tests/integration/test_stats.py` to use `tick_labels=` on matplotlib ≥3.9 while falling back to `labels=` on older versions.
+
 ### 0.1.3 — DuckONA analysis layer
 
 - Added `pyduck_ona.DuckONA` high-level class for end-to-end HR analytics:
