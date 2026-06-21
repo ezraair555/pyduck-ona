@@ -16,6 +16,7 @@ method-chaining data-cleaning workflows.
 |---|---|
 | `examples/full_workflow.py` | Minimal end-to-end ONA workflow on a 13-employee toy org (hierarchy diagnostics, span-of-control, betweenness, pagerank, shortest path). |
 | `examples/hr_attrition_analysis.py` | Full **People Analytics** pipeline on 196 synthetic employees: org diagnostics + span-of-control + ONA centrality + **logistic attrition model** + **OLS salary model with pay-equity audit** + chi-square test of department × gender. Outputs CSVs and PNGs. See [`docs/hr_analysis_tutorial.md`](docs/hr_analysis_tutorial.md) for a walkthrough. |
+| `examples/hr_compensation_mobility_analysis.py` | **DuckONA class** demo with synthetic HRIS: load compensation, turnover, promotions, skills, attendance; run org-chart centrality + OLS salary + logistic turnover + temporal attendance slices + MRQAP. |
 
 ## Why this exists
 
@@ -180,6 +181,18 @@ current DuckDB releases; the extension is in flux after a major API
 rewrite). The NetworkX backend is the default and always available. The
 DuckPGQ slot is reserved so the API surface stays stable when it ships.
 
+### ERGM (deferred)
+
+Exponential Random Graph Models (ERGMs) model the network itself as the
+dependent variable — for example, testing whether employees are more
+likely to collaborate when they share a department, controlling for
+reciprocity and transitivity. There is currently no production-grade
+Python ERGM library. `pyduck-ona` stays Python-only, so ERGM is
+deferred until a mature Python implementation exists. The recommended
+gold-standard tooling remains R's `statnet`/`ergm`; clean DuckDB
+relations from this package can be exported to R via Parquet if you need
+ERGMs today.
+
 ## Statistical-model integration (broom-sm)
 
 ```python
@@ -252,6 +265,17 @@ John C. Vallier — `jcvallier.cpa@gmail.com`
 Maintained by EzraAir555.
 
 ## Changelog
+
+### 0.1.5 — P2 polish: rename, docs, ERGM note
+
+- Added `node_id_col` parameter to graph metric functions so callers can
+  rename the output node-id column (e.g., to `employee_id`).
+- Added `examples/hr_compensation_mobility_analysis.py` to the README
+  Examples table.
+- Added `docs/duckona_tutorial.md` covering the `DuckONA` class, HR table
+  loaders, validation, centrality, models, temporal slicing, and MRQAP.
+- Added an ERGM scope note explaining that ERGM is deferred pending a
+  mature Python library.
 
 ### 0.1.4 — Matplotlib 3.11 compatibility
 

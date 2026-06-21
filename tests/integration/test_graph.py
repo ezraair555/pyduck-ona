@@ -283,3 +283,49 @@ class TestDuckPGQBackend:
         with pytest.raises(ImportError, match="DuckPGQ"):
             connected_components(direct, "employee_id", "supervisor_id",
                                  backend="duckpgq")
+
+
+# ─── node_id_col rename ─────────────────────────────────────────────────────
+
+class TestNodeIdRename:
+    """Graph functions accept a custom output node-id column name."""
+
+    def test_betweenness_rename(self, simple_org):
+        direct = _direct_edges(simple_org)
+        result = betweenness(direct, "employee_id", "supervisor_id",
+                              node_id_col="employee_id").df()
+        assert "employee_id" in result.columns
+        assert "betweenness" in result.columns
+        assert "node_id" not in result.columns
+
+    def test_pagerank_rename(self, simple_org):
+        direct = _direct_edges(simple_org)
+        result = pagerank(direct, "employee_id", "supervisor_id",
+                          node_id_col="employee_id").df()
+        assert "employee_id" in result.columns
+        assert "pagerank" in result.columns
+        assert "node_id" not in result.columns
+
+    def test_eigenvector_rename(self, simple_org):
+        from pyduck_ona.graph import eigenvector_centrality
+        direct = _direct_edges(simple_org)
+        result = eigenvector_centrality(direct, "employee_id", "supervisor_id",
+                                         node_id_col="employee_id").df()
+        assert "employee_id" in result.columns
+        assert "eigenvector" in result.columns
+
+    def test_degree_rename(self, simple_org):
+        from pyduck_ona.graph import degree_centrality
+        direct = _direct_edges(simple_org)
+        result = degree_centrality(direct, "employee_id", "supervisor_id",
+                                   node_id_col="employee_id").df()
+        assert "employee_id" in result.columns
+        assert "degree_centrality" in result.columns
+
+    def test_louvain_rename(self, simple_org):
+        from pyduck_ona.graph import louvain_communities
+        direct = _direct_edges(simple_org)
+        result = louvain_communities(direct, "employee_id", "supervisor_id",
+                                    node_id_col="employee_id").df()
+        assert "employee_id" in result.columns
+        assert "community_id" in result.columns

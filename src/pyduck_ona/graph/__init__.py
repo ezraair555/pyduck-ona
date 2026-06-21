@@ -193,6 +193,7 @@ def betweenness(
     source_col: str,
     target_col: str,
     *,
+    node_id_col: str = "node_id",
     backend: Literal["networkx", "duckpgq"] = "networkx",
 ) -> "DuckDBPyRelation":
     """Betweenness centrality for every node (broker detection).
@@ -205,12 +206,14 @@ def betweenness(
     ----------
     edges, source_col, target_col
         Edge relation and column names.
+    node_id_col : str, default "node_id"
+        Name of the node-id column in the returned relation.
     backend : {"networkx", "duckpgq"}
 
     Returns
     -------
     DuckDBPyRelation
-        Columns ``(node_id, betweenness)`` sorted by betweenness DESC.
+        Columns ``(node_id_col, betweenness)`` sorted by betweenness DESC.
         In an org chart the CEO dominates (sits on every path); in a
         collaboration network top collaborators rise even if not senior.
     """
@@ -226,7 +229,7 @@ def betweenness(
     scores = nx.betweenness_centrality(G)
     df = pd.DataFrame(
         [(node, float(score)) for node, score in scores.items()],
-        columns=["node_id", "betweenness"],
+        columns=[node_id_col, "betweenness"],
     ).sort_values("betweenness", ascending=False, kind="mergesort")
     return _wrap_as_relation(df)
 
@@ -237,6 +240,7 @@ def pagerank(
     target_col: str,
     *,
     damping: float = 0.85,
+    node_id_col: str = "node_id",
     backend: Literal["networkx", "duckpgq"] = "networkx",
 ) -> "DuckDBPyRelation":
     """PageRank centrality (influence scoring).
@@ -250,12 +254,14 @@ def pagerank(
     damping : float, default 0.85
         Standard PageRank damping factor (probability that a random walk
         follows a link vs. teleports to a random node).
+    node_id_col : str, default "node_id"
+        Name of the node-id column in the returned relation.
     backend : {"networkx", "duckpgq"}
 
     Returns
     -------
     DuckDBPyRelation
-        Columns ``(node_id, pagerank)`` sorted by pagerank DESC.
+        Columns ``(node_id_col, pagerank)`` sorted by pagerank DESC.
     """
     import pandas as pd
 
@@ -269,7 +275,7 @@ def pagerank(
     scores = nx.pagerank(G, alpha=damping)
     df = pd.DataFrame(
         [(node, float(score)) for node, score in scores.items()],
-        columns=["node_id", "pagerank"],
+        columns=[node_id_col, "pagerank"],
     ).sort_values("pagerank", ascending=False, kind="mergesort")
     return _wrap_as_relation(df)
 
@@ -326,6 +332,7 @@ def eigenvector_centrality(
     source_col: str,
     target_col: str,
     *,
+    node_id_col: str = "node_id",
     backend: Literal["networkx", "duckpgq"] = "networkx",
 ) -> "DuckDBPyRelation":
     """Eigenvector centrality for every node.
@@ -339,12 +346,14 @@ def eigenvector_centrality(
     Parameters
     ----------
     edges, source_col, target_col
+    node_id_col : str, default "node_id"
+        Name of the node-id column in the returned relation.
     backend : {"networkx", "duckpgq"}
 
     Returns
     -------
     DuckDBPyRelation
-        Columns ``(node_id, eigenvector)`` sorted by eigenvector DESC.
+        Columns ``(node_id_col, eigenvector)`` sorted by eigenvector DESC.
     """
     import pandas as pd
 
@@ -371,7 +380,7 @@ def eigenvector_centrality(
 
     df = pd.DataFrame(
         [(node, float(score)) for node, score in scores.items()],
-        columns=["node_id", "eigenvector"],
+        columns=[node_id_col, "eigenvector"],
     ).sort_values("eigenvector", ascending=False, kind="mergesort")
     return _wrap_as_relation(df)
 
@@ -382,6 +391,7 @@ def degree_centrality(
     target_col: str,
     *,
     mode: Literal["in", "out", "total"] = "out",
+    node_id_col: str = "node_id",
     backend: Literal["networkx", "duckpgq"] = "networkx",
 ) -> "DuckDBPyRelation":
     """Degree centrality for every node.
@@ -396,12 +406,14 @@ def degree_centrality(
     ----------
     edges, source_col, target_col
     mode : {"in", "out", "total"}, default "out"
+    node_id_col : str, default "node_id"
+        Name of the node-id column in the returned relation.
     backend : {"networkx", "duckpgq"}
 
     Returns
     -------
     DuckDBPyRelation
-        Columns ``(node_id, degree_centrality)`` sorted by degree DESC.
+        Columns ``(node_id_col, degree_centrality)`` sorted by degree DESC.
     """
     import pandas as pd
 
@@ -423,7 +435,7 @@ def degree_centrality(
 
     df = pd.DataFrame(
         [(node, float(score)) for node, score in scores.items()],
-        columns=["node_id", "degree_centrality"],
+        columns=[node_id_col, "degree_centrality"],
     ).sort_values("degree_centrality", ascending=False, kind="mergesort")
     return _wrap_as_relation(df)
 
@@ -435,6 +447,7 @@ def louvain_communities(
     *,
     weight_col: str | None = None,
     resolution: float = 1.0,
+    node_id_col: str = "node_id",
     backend: Literal["networkx", "duckpgq"] = "networkx",
 ) -> "DuckDBPyRelation":
     """Louvain community detection on the edge graph.
@@ -450,13 +463,15 @@ def louvain_communities(
         Column holding edge weight. If None, all edges weight 1.
     resolution : float, default 1.0
         Louvain resolution parameter (higher = more / smaller communities).
+    node_id_col : str, default "node_id"
+        Name of the node-id column in the returned relation.
     backend : {"networkx", "duckpgq"}
 
     Returns
     -------
     DuckDBPyRelation
-        Columns ``(node_id, community_id)`` sorted by community_id, then
-        node_id.
+        Columns ``(node_id_col, community_id)`` sorted by community_id, then
+        node_id_col.
     """
     import pandas as pd
 
@@ -494,7 +509,7 @@ def louvain_communities(
     for idx, members in enumerate(communities):
         for node in members:
             rows.append((node, idx))
-    df = pd.DataFrame(rows, columns=["node_id", "community_id"]).sort_values(
-        ["community_id", "node_id"], kind="mergesort"
+    df = pd.DataFrame(rows, columns=[node_id_col, "community_id"]).sort_values(
+        ["community_id", node_id_col], kind="mergesort"
     )
     return _wrap_as_relation(df)
