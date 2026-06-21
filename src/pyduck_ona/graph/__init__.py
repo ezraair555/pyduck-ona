@@ -87,8 +87,10 @@ def _nx_digraph(edges: "DuckDBPyRelation", source_col: str, target_col: str):
     import networkx as nx
 
     src, tgt = _edges_arrow(edges, source_col, target_col)
+    # Drop rows where either endpoint is NULL before building the graph.
+    pairs = [(s, t) for s, t in zip(src, tgt) if s is not None and t is not None]
     G = nx.DiGraph()
-    G.add_edges_from(zip(src, tgt))
+    G.add_edges_from(pairs)
     return G
 
 

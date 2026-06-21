@@ -17,6 +17,7 @@ for DuckDB SQL and the relational API:
 from __future__ import annotations
 
 import re
+import uuid
 from typing import TYPE_CHECKING
 
 import duckdb
@@ -56,6 +57,21 @@ def _quote_ident(name: str) -> str:
     return f'"{escaped}"'
 
 
+def _coalesce_empty_to_null(col_quoted: str) -> str:
+    """Return SQL that treats NULL or empty string as NULL.
+
+    DuckDB comparisons to an empty string literal force a VARCHAR cast,
+    which raises ``ConversionException`` for non-string key types such as
+    integer employee IDs. This expression short-circuits on NULL, then
+    safely casts to VARCHAR to detect empty strings, leaving real IDs
+    unchanged.
+    """
+    return (
+        f"CASE WHEN {col_quoted} IS NULL OR CAST({col_quoted} AS VARCHAR) = '' "
+        f"THEN NULL ELSE {col_quoted} END"
+    )
+
+
 def _validate_relation(rel: duckdb.DuckDBPyRelation) -> None:
     """Ensure `rel` is a non-empty DuckDB relation."""
     if not isinstance(rel, duckdb.DuckDBPyRelation):
@@ -68,6 +84,7 @@ def _validate_columns(
     rel: duckdb.DuckDBPyRelation,
     *columns: str,
     require_non_null: "bool | list[str] | None" = None,
+    require_unique: "list[str] | None" = None,
 ) -> None:
     """Verify each column name exists in the relation's schema.
 
@@ -88,6 +105,10 @@ def _validate_columns(
         anything, including itself), so we fail loudly with a count of
         offending rows. Fix the HRIS export upstream rather than
         papering over it here.
+    require_unique
+        List of columns whose values must be unique. A non-empty relation
+        with duplicate values raises ``ValueError``. Use this for
+        ``employee_id`` to catch duplicated HRIS rows early.
     """
     schema_names = set(rel.columns)
     missing = [c for c in columns if c not in schema_names]
@@ -103,27 +124,45 @@ def _validate_columns(
         null_check_cols = list(columns)
     else:
         null_check_cols = list(require_non_null)
-    if not null_check_cols:
-        return
-    # Build a single COUNT(*) per column to avoid N separate queries.
-    # We use the helper so this also works when the caller is on a
-    # non-default connection.
-    null_selects = ", ".join(
-        f'SUM(CASE WHEN {_quote_ident(c)} IS NULL THEN 1 ELSE 0 END) AS "{c}_nulls"'
-        for c in null_check_cols
-    )
-    counts = _run_sql_on_default(
-        rel,
-        f"SELECT {null_selects} FROM {{INPUT}}",
-    ).df()
-    for c in null_check_cols:
-        n_null = int(counts.iloc[0][f"{c}_nulls"])
-        if n_null > 0:
-            raise ValueError(
-                f"column {c!r} contains {n_null} NULL value(s); "
-                f"key columns must be non-null. "
-                f"Filter or fix the HRIS export upstream."
+    if null_check_cols:
+        # Build a single COUNT(*) per column to avoid N separate queries.
+        # We use the helper so this also works when the caller is on a
+        # non-default connection. COALESCE protects against the zero-row
+        # case where DuckDB returns NaN for SUM over an empty set.
+        null_selects = ", ".join(
+            f'COALESCE(SUM(CASE WHEN {_quote_ident(c)} IS NULL THEN 1 ELSE 0 END), 0) AS "{c}_nulls"'
+            for c in null_check_cols
+        )
+        counts = _run_sql_on_default(
+            rel,
+            f"SELECT {null_selects} FROM {{INPUT}}",
+        ).df()
+        for c in null_check_cols:
+            n_null = int(counts.iloc[0][f"{c}_nulls"])
+            if n_null > 0:
+                raise ValueError(
+                    f"column {c!r} contains {n_null} NULL value(s); "
+                    f"key columns must be non-null. "
+                    f"Filter or fix the HRIS export upstream."
+                )
+
+    if require_unique:
+        for c in require_unique:
+            dup_select = (
+                f'COALESCE(COUNT(*) - COUNT(DISTINCT {_quote_ident(c)}), 0) AS dups'
             )
+            dup_count = int(
+                _run_sql_on_default(
+                    rel,
+                    f"SELECT {dup_select} FROM {{INPUT}}",
+                ).df().iloc[0]["dups"]
+            )
+            if dup_count > 0:
+                raise ValueError(
+                    f"column {c!r} contains {dup_count} duplicate value(s); "
+                    f"key columns must be unique. "
+                    f"Deduplicate or fix the HRIS export upstream."
+                )
 
 
 # ─── Cross-connection execution ───────────────────────────────────────────
@@ -143,8 +182,6 @@ def _validate_columns(
 # in-memory DuckDB connections; the round-trip cost is one Arrow
 # conversion, which is the same cost the caller already pays the moment
 # they call ``.df()`` on the result.
-
-_TEMP_VIEW_COUNTER = 0
 
 
 def _run_sql_on_default(
@@ -176,9 +213,7 @@ def _run_sql_on_default(
 
     See P0-1 in ``memory/2026-06-21_qwen_review.md`` for the original bug.
     """
-    global _TEMP_VIEW_COUNTER
-    _TEMP_VIEW_COUNTER += 1
-    view_name = f"_pona_df_{_TEMP_VIEW_COUNTER}_{id(rel) & 0xFFFFFFFF:x}"
+    view_name = f"_pona_df_{uuid.uuid4().hex[:12]}"
 
     arrow_table = rel.arrow()
     # DuckDB 1.3+ returns a streaming RecordBatchReader; materialize.
@@ -258,14 +293,15 @@ def hierarchy_valid(
      ('loop', 'emp_42', 'Cycle detected at depth 4')]
     """
     _validate_relation(df)
-    _validate_columns(df, employee_id, supervisor_id, require_non_null=[employee_id])
+    _validate_columns(df, employee_id, supervisor_id, require_non_null=[employee_id], require_unique=[employee_id])
 
     emp = _quote_ident(employee_id)
     sup = _quote_ident(supervisor_id)
+    sup_clean = _coalesce_empty_to_null(sup)
 
     sql = f"""
     WITH RECURSIVE
-    base AS (SELECT {emp} AS emp, {sup} AS sup FROM df),
+    base AS (SELECT {emp} AS emp, {sup_clean} AS sup FROM df),
     -- 1. self-references
     self_refs AS (
         SELECT 'self_reference' AS issue_type, emp AS employee_id,
@@ -283,7 +319,7 @@ def hierarchy_valid(
     ),
     -- 3. multiple roots: count of employees with no supervisor
     root_count AS (
-        SELECT COUNT(*) AS n FROM base WHERE sup IS NULL OR sup = ''
+        SELECT COUNT(*) AS n FROM base WHERE sup IS NULL
     ),
     multiple_roots AS (
         SELECT 'multiple_roots' AS issue_type, CAST(NULL AS VARCHAR) AS employee_id,
@@ -294,7 +330,7 @@ def hierarchy_valid(
     --    We use a recursive CTE and bound depth by the row count + 1.
     recursive_walk AS (
         SELECT emp, sup, 1 AS depth
-        FROM base WHERE sup IS NOT NULL AND sup <> ''
+        FROM base WHERE sup IS NOT NULL
         UNION ALL
         SELECT rw.emp, b.sup, rw.depth + 1
         FROM recursive_walk rw JOIN base b ON rw.sup = b.emp
@@ -359,20 +395,21 @@ def hierarchy_long(
     1        E001          E005      2     E001->E010->E005
     """
     _validate_relation(df)
-    _validate_columns(df, employee_id, supervisor_id, require_non_null=[employee_id])
+    _validate_columns(df, employee_id, supervisor_id, require_non_null=[employee_id], require_unique=[employee_id])
 
     emp = _quote_ident(employee_id)
     sup = _quote_ident(supervisor_id)
+    sup_clean = _coalesce_empty_to_null(sup)
 
     sql = f"""
     WITH RECURSIVE
-    base AS (SELECT {emp} AS emp, {sup} AS sup FROM df),
+    base AS (SELECT {emp} AS emp, {sup_clean} AS sup FROM df),
     chain AS (
         -- Anchor: every (employee, supervisor) edge except NULL supervisors
         SELECT emp AS employee_id, sup AS supervisor_id, 1 AS depth,
                emp || '->' || sup AS path
         FROM base
-        WHERE sup IS NOT NULL AND sup <> ''
+        WHERE sup IS NOT NULL
 
         UNION ALL
 
@@ -380,7 +417,7 @@ def hierarchy_long(
         SELECT c.employee_id, b.sup AS supervisor_id, c.depth + 1,
                c.path || '->' || b.sup AS path
         FROM chain c JOIN base b ON c.supervisor_id = b.emp
-        WHERE c.depth < ? AND b.sup IS NOT NULL AND b.sup <> ''
+        WHERE c.depth < ? AND b.sup IS NOT NULL
     )
     SELECT employee_id, supervisor_id, depth, path FROM chain
     ORDER BY employee_id, depth
@@ -433,7 +470,7 @@ def hierarchy_wide(
     0   E001        E010        E005       E002      E001      None
     """
     _validate_relation(df)
-    _validate_columns(df, employee_id, supervisor_id, require_non_null=[employee_id])
+    _validate_columns(df, employee_id, supervisor_id, require_non_null=[employee_id], require_unique=[employee_id])
     if not (1 <= max_depth <= 100):
         raise ValueError(
             f"max_depth must be 1..100, got {max_depth}. "
@@ -448,6 +485,7 @@ def hierarchy_wide(
 
     emp = _quote_ident(employee_id)
     sup = _quote_ident(supervisor_id)
+    sup_clean = _coalesce_empty_to_null(sup)
 
     # Build the PIVOT-IN list and level-column names.
     pivot_levels = list(range(1, max_depth + 1))
@@ -465,14 +503,14 @@ def hierarchy_wide(
     # ``memory/2026-06-21_qwen_review.md`` for context.
     sql = f"""
     WITH RECURSIVE
-    base AS (SELECT {emp} AS emp, {sup} AS sup FROM {{INPUT}}),
+    base AS (SELECT {emp} AS emp, {sup_clean} AS sup FROM {{INPUT}}),
     chain AS (
         SELECT emp AS employee_id, sup AS supervisor_id, 1 AS depth
-        FROM base WHERE sup IS NOT NULL AND sup <> ''
+        FROM base WHERE sup IS NOT NULL
         UNION ALL
         SELECT c.employee_id, b.sup AS supervisor_id, c.depth + 1
         FROM chain c JOIN base b ON c.supervisor_id = b.emp
-        WHERE c.depth < ? AND b.sup IS NOT NULL AND b.sup <> ''
+        WHERE c.depth < ? AND b.sup IS NOT NULL
     ),
     deduped AS (
         SELECT DISTINCT employee_id, depth, supervisor_id
@@ -535,22 +573,23 @@ def hierarchy_stats(
     0        E010              12                47             59         59             5
     """
     _validate_relation(df)
-    _validate_columns(df, employee_id, supervisor_id, require_non_null=[employee_id])
+    _validate_columns(df, employee_id, supervisor_id, require_non_null=[employee_id], require_unique=[employee_id])
 
     emp = _quote_ident(employee_id)
     sup = _quote_ident(supervisor_id)
+    sup_clean = _coalesce_empty_to_null(sup)
 
     sql = f"""
     WITH RECURSIVE
-    base AS (SELECT {emp} AS emp, {sup} AS sup FROM df),
+    base AS (SELECT {emp} AS emp, {sup_clean} AS sup FROM df),
     -- The long format gives us every (manager, report) edge with depth
     chain AS (
         SELECT sup AS manager_id, emp AS report_id, 1 AS depth
-        FROM base WHERE sup IS NOT NULL AND sup <> ''
+        FROM base WHERE sup IS NOT NULL
         UNION ALL
         SELECT c.manager_id, b.emp, c.depth + 1
         FROM chain c JOIN base b ON c.report_id = b.sup
-        WHERE c.depth < ? AND b.sup IS NOT NULL AND b.sup <> ''
+        WHERE c.depth < ? AND b.sup IS NOT NULL
     ),
     -- Direct: depth = 1
     direct AS (

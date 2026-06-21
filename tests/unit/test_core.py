@@ -308,6 +308,141 @@ class TestErrorGuidance:
         assert "default" in str(exc_info.value).lower()
 
 
+# ─── Empty relation handling (P0-1 regression) ─────────────────────────────
+
+class TestEmptyRelation:
+    """Regression tests for zero-row input relations.
+
+    Before the fix: ``_validate_columns`` converted DuckDB's NaN result
+    for ``SUM(...)`` over an empty set to ``int``, raising
+    ``ValueError: cannot convert float NaN to integer``.
+    """
+
+    @pytest.fixture
+    def empty_org(self):
+        return duckdb.sql(
+            "SELECT 'x' AS employee_id, CAST(NULL AS VARCHAR) AS supervisor_id WHERE 1=0"
+        )
+
+    def test_hierarchy_valid_empty_relation(self, empty_org):
+        result = hierarchy_valid(empty_org, "employee_id", "supervisor_id").df()
+        assert len(result) == 0
+
+    def test_hierarchy_long_empty_relation(self, empty_org):
+        result = hierarchy_long(empty_org, "employee_id", "supervisor_id").df()
+        assert len(result) == 0
+
+    def test_hierarchy_wide_empty_relation(self, empty_org):
+        result = hierarchy_wide(
+            empty_org, "employee_id", "supervisor_id", max_depth=3
+        ).df()
+        assert len(result) == 0
+        assert "employee_id" in result.columns
+
+    def test_hierarchy_stats_empty_relation(self, empty_org):
+        result = hierarchy_stats(empty_org, "employee_id", "supervisor_id").df()
+        assert len(result) == 0
+
+
+# ─── Non-string key types (P0-2 regression) ────────────────────────────────
+
+class TestNumericKeys:
+    """Regression tests for integer (and other non-VARCHAR) key types.
+
+    Before the fix: SQL fragments like ``sup <> ''`` forced DuckDB to cast
+    the supervisor column to VARCHAR, raising ``ConversionException`` for
+    numeric IDs.
+    """
+
+    @pytest.fixture
+    def numeric_org(self):
+        return duckdb.sql(
+            "SELECT * FROM (VALUES "
+            "(1, CAST(NULL AS INTEGER)), "
+            "(2, 1), "
+            "(3, 1), "
+            "(4, 2)) t(employee_id, supervisor_id)"
+        )
+
+    def test_hierarchy_valid_numeric_keys(self, numeric_org):
+        result = hierarchy_valid(numeric_org, "employee_id", "supervisor_id").df()
+        assert len(result) == 0
+
+    def test_hierarchy_long_numeric_keys(self, numeric_org):
+        result = hierarchy_long(numeric_org, "employee_id", "supervisor_id").df()
+        # 4 rows: 2->1, 3->1, 4->2, 4->1 (depth 2)
+        assert len(result) == 4
+
+    def test_hierarchy_wide_numeric_keys(self, numeric_org):
+        result = hierarchy_wide(
+            numeric_org, "employee_id", "supervisor_id", max_depth=3
+        ).df()
+        e4 = result[result["employee_id"] == 4].iloc[0]
+        assert e4["Level_1"] == 2
+        assert e4["Level_2"] == 1
+
+    def test_hierarchy_stats_numeric_keys(self, numeric_org):
+        result = hierarchy_stats(numeric_org, "employee_id", "supervisor_id").df()
+        mgr1 = result[result["manager_id"] == 1].iloc[0]
+        assert mgr1["direct_reports"] == 2
+        assert mgr1["total_reports"] == 3
+
+
+# ─── Duplicate employee_id validation (P1-3 regression) ─────────────────────
+
+class TestDuplicateEmployeeId:
+    """Regression tests for duplicate employee identifiers.
+
+    Before the fix: an employee appearing twice (especially with
+    different supervisors) silently produced confusing recursive-CTE
+    output instead of failing fast.
+    """
+
+    def test_duplicate_employee_id_raises(self):
+        rel = duckdb.sql(
+            "SELECT * FROM (VALUES "
+            "('E001', CAST(NULL AS VARCHAR)), "
+            "('E001', 'E002'), "
+            "('E002', CAST(NULL AS VARCHAR))) t(employee_id, supervisor_id)"
+        )
+        with pytest.raises(ValueError, match="duplicate"):
+            hierarchy_valid(rel, "employee_id", "supervisor_id").df()
+
+    def test_duplicate_employee_id_in_long_raises(self):
+        rel = duckdb.sql(
+            "SELECT * FROM (VALUES "
+            "('E001', CAST(NULL AS VARCHAR)), "
+            "('E001', 'E002'), "
+            "('E002', CAST(NULL AS VARCHAR))) t(employee_id, supervisor_id)"
+        )
+        with pytest.raises(ValueError, match="duplicate"):
+            hierarchy_long(rel, "employee_id", "supervisor_id").df()
+
+
+# ─── Empty-string supervisor semantics (P1-1 regression) ──────────────────
+
+class TestEmptyStringSupervisor:
+    """Empty-string supervisor_id should be treated the same as NULL."""
+
+    def test_empty_string_supervisor_is_root(self):
+        rel = duckdb.sql(
+            "SELECT * FROM (VALUES "
+            "('E001', ''), "
+            "('E002', 'E001')) t(employee_id, supervisor_id)"
+        )
+        result = hierarchy_valid(rel, "employee_id", "supervisor_id").df()
+        assert len(result) == 0  # single root, clean chain
+
+    def test_multiple_empty_string_supervisors_are_multiple_roots(self):
+        rel = duckdb.sql(
+            "SELECT * FROM (VALUES "
+            "('E001', ''), "
+            "('E002', '')) t(employee_id, supervisor_id)"
+        )
+        result = hierarchy_valid(rel, "employee_id", "supervisor_id").df()
+        assert "multiple_roots" in result["issue_type"].values
+
+
 # ─── Cycle detection boundary (P2-3 + P0-3 boundary check) ─────────────
 
 class TestCycleDetectionBoundary:

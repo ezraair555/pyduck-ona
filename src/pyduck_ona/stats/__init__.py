@@ -24,6 +24,7 @@ two compose by convention.
 from __future__ import annotations
 
 import os
+import re
 from typing import TYPE_CHECKING, Any, Sequence
 
 import duckdb
@@ -32,6 +33,10 @@ import pandas as pd
 if TYPE_CHECKING:
     from duckdb import DuckDBPyRelation
     import matplotlib.figure
+
+# Same safe-identifier rule used by core.py; keep local to avoid a
+# cross-module dependency for this thin validation helper.
+_IDENT_SAFE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # All `broom_sm.*` functions raise ImportError at call time if the
 # package isn't installed (it's an optional extra, ``pip install
@@ -427,6 +432,23 @@ def model_compare(
     return _compare()(models)
 
 
+def _validate_table_name(name: str) -> None:
+    """Reject unsafe or malformed DuckDB table identifiers.
+
+    We intentionally restrict table names to unquoted identifiers to
+    avoid SQL injection via values like ``foo; DROP TABLE bar; --``.
+    DuckDB supports quoted identifiers, but allowing them here would
+    re-open the injection surface; callers can use safe names.
+    """
+    if not isinstance(name, str) or not name:
+        raise ValueError("table_name must be a non-empty string")
+    if not _IDENT_SAFE_RE.match(name):
+        raise ValueError(
+            f"table_name must be a valid unquoted DuckDB identifier, "
+            f"got {name!r}"
+        )
+
+
 # ─── DuckDB I/O ────────────────────────────────────────────────────────────
 
 def tidy_to_duckdb(
@@ -468,6 +490,7 @@ def tidy_to_duckdb(
     """
     if con is None:
         con = duckdb.connect()
+    _validate_table_name(table_name)
     # Rewrite dotted column names to underscored equivalents so the
     # resulting DuckDB table is queryable without manual quoting. This
     # is purely a write-time rewrite; the in-memory ``tidy_df`` argument
@@ -502,6 +525,7 @@ def to_duckdb(
     """
     if con is None:
         con = duckdb.connect()
+    _validate_table_name(table_name)
     if isinstance(data, pd.DataFrame):
         con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM data")
     else:

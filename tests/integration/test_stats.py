@@ -189,24 +189,8 @@ class TestANOVA:
         groups = [hr_data[hr_data["department"] == d]["salary"].values
                   for d in ["Eng", "Ops", "Sales", "HR"]]
         fig, ax = plt.subplots(figsize=(7, 5))
-        # ``tick_labels`` is the modern matplotlib API (>=3.9); ``labels``
-        # is deprecated and was removed in matplotlib 3.11. Support both
-        # so the test passes on the pinned 3.9+ and on older 3.8.
-        try:
-            bp = ax.boxplot(
-                groups,
-                tick_labels=["Eng", "Ops", "Sales", "HR"],
-                patch_artist=True,
-                showmeans=True,
-            )
-        except TypeError:
-            # matplotlib < 3.9: fall back to the deprecated kwarg.
-            bp = ax.boxplot(
-                groups,
-                labels=["Eng", "Ops", "Sales", "HR"],
-                patch_artist=True,
-                showmeans=True,
-            )
+        bp = ax.boxplot(groups, labels=["Eng", "Ops", "Sales", "HR"],
+                        patch_artist=True, showmeans=True)
         for patch, color in zip(bp["boxes"],
                                  ["#4C72B0", "#DD8452", "#55A467", "#C44E52"]):
             patch.set_facecolor(color)
@@ -481,3 +465,34 @@ class TestTidyToDuckDBDottedNames:
         # tidy_df is unchanged
         assert list(tidy.columns) == original_cols
         assert "p.value" in original_cols  # still dotted in source
+
+
+# ─── Table-name validation (P1-5 regression) ────────────────────────────────
+
+class TestTableNameValidation:
+    """Regression tests for table-name injection guard.
+
+    Before the fix: ``tidy_to_duckdb`` and ``to_duckdb`` interpolated
+    ``table_name`` directly into SQL. A malicious or accidental value
+    like ``foo; DROP TABLE bar; --`` reached DuckDB's parser.
+    """
+
+    def test_tidy_to_duckdb_rejects_injection_attempt(self, hr_data):
+        tidy, _ = pona.ols(hr_data, "salary ~ team_size")
+        with pytest.raises(ValueError, match="table_name"):
+            pona.tidy_to_duckdb(tidy, table_name="foo; DROP TABLE bar; --")
+
+    def test_tidy_to_duckdb_rejects_empty_name(self, hr_data):
+        tidy, _ = pona.ols(hr_data, "salary ~ team_size")
+        with pytest.raises(ValueError, match="table_name"):
+            pona.tidy_to_duckdb(tidy, table_name="")
+
+    def test_to_duckdb_rejects_injection_attempt(self, hr_data):
+        df = hr_data[["salary", "team_size"]].head()
+        with pytest.raises(ValueError, match="table_name"):
+            pona.to_duckdb(df, table_name="foo; DROP TABLE bar; --")
+
+    def test_to_duckdb_accepts_safe_name(self, hr_data):
+        df = hr_data[["salary", "team_size"]].head()
+        rel, con = pona.to_duckdb(df, table_name="safe_hr")
+        assert rel.count("*").fetchone()[0] == len(df)

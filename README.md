@@ -109,6 +109,20 @@ A few things to know that are easy to hit the first time:
   the graph and makes `betweenness` / `pagerank` degenerate. Use
   `SELECT employee_id, supervisor_id FROM rel WHERE supervisor_id IS NOT NULL`.
 
+- **`employee_id` must be unique.** Duplicate employee IDs raise
+  `ValueError` immediately; deduplicate upstream before calling the
+  hierarchy functions.
+
+- **`supervisor_id` may be any DuckDB type.** Integer, UUID, or VARCHAR
+  IDs all work. Empty strings are normalized to NULL (treated as roots).
+
+- **Zero-row input relations return empty results** for all four
+  hierarchy functions instead of raising.
+
+- **Graph algorithms drop rows with NULL endpoints.** Passing a raw org
+  relation that includes the root (NULL supervisor) no longer crashes
+  `betweenness` / `pagerank` / `connected_components`.
+
 - **`tidy_to_duckdb()` rewrites dotted column names on write.**
   `broom-sm` returns `p.value`, `conf.low` (R-style). DuckDB parses
   unquoted dots as struct field access. `tidy_to_duckdb` renames them
@@ -120,7 +134,8 @@ A few things to know that are easy to hit the first time:
     DataFrame to a DuckDB table (with the dotted-name rewrite above).
   - `to_duckdb(data, table_name, con)` registers any DataFrame or
     relation as a DuckDB table (no rewrite).
-  Both return `(table_name, con)`.
+  Both return `(table_name, con)` and validate `table_name` as a safe
+  unquoted DuckDB identifier.
 
 - **Empty-graph safety.** `betweenness` / `pagerank` /
   `connected_components` return an empty DataFrame on an empty edge
@@ -202,7 +217,7 @@ for label, fig in pona.plot_ols(hr_df, x=["team_size", "tenure_yrs"], y="salary"
 tidy, _ = pona.ols(hr_df, "salary ~ team_size + tenure_yrs")
 table_name, con = pona.tidy_to_duckdb(tidy, table_name="salary_model")
 duckdb_con = con  # use the same connection
-duckdb_con.sql("SELECT term, estimate FROM salary_model WHERE \"p.value\" < 0.05")
+duckdb_con.sql("SELECT term, estimate FROM salary_model WHERE p_value < 0.05")
 ```
 
 ## Architecture
@@ -227,37 +242,42 @@ All public functions validate column names against a strict regex
 pattern. SQL values are always bound via DuckDB's `?` parameter API, never
 string-interpolated. This means untrusted column names are safe.
 
-## Changelog
-
-### 0.1.1 (2026-06-20)
-
-Audit + hardening release.
-
-**Bug fixes**
-
-- `hierarchy_valid` / `hierarchy_long` / `hierarchy_wide` / `hierarchy_stats` now correctly accept DuckDB relations created on a custom `con = duckdb.connect()` instance. (Previously raised `InvalidInputException: not suitable for replacement scan` — see `memory/2026-06-21_qwen_review.md` P0-1.)
-- `_validate_columns(..., require_non_null=[employee_id])` fails loudly on NULL `employee_id` rows, instead of silently dropping them in recursive CTEs. `supervisor_id` is still allowed to be NULL (that's the root of the hierarchy).
-- `tidy_to_duckdb(...)` now rewrites R-style dotted column names (`p.value` → `p_value`, `conf.low` → `conf_low`) on write, so the resulting DuckDB table is queryable without manual quoting.
-
-**Docs**
-
-- README gains a "Short aliases" section and a "API conventions & gotchas" section.
-- `hierarchy_wide` and `shortest_path` docstrings document their non-obvious behaviors (silent depth truncation, `source == target` returns trivial self-path).
-- `max_depth` validation now suggests the default (15) in its error message.
-
-**Tests**
-
-- 13 new regression tests added: `TestConnectionIsolation` (6), `TestNullValidation` (3), `TestErrorGuidance` (1), `TestCycleDetectionBoundary` (5), `TestTidyToDuckDBDottedNames` (4). 103 total pass.
-
-### 0.1.0 (2026-06-20)
-
-Initial public release.
-
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see LICENSE.
 
 ## Author
 
 John C. Vallier — `jcvallier.cpa@gmail.com`
 Maintained by EzraAir555.
+
+## Changelog
+
+### 0.1.2 — Kimi review hardening
+
+- Fixed empty-relation crash in all four hierarchy functions.
+- Fixed non-string key-type crash (integer, UUID, etc.) by normalizing
+  empty strings to NULL without forcing VARCHAR casts.
+- Fixed graph algorithms to drop NULL-endpoint rows instead of raising
+  `ValueError: None cannot be a node`.
+- Replaced global temp-view counter in `_run_sql_on_default` with UUIDs.
+- Added duplicate `employee_id` validation across hierarchy functions.
+- Validated `table_name` in `tidy_to_duckdb` / `to_duckdb` to prevent
+  SQL injection.
+- Added 22 regression tests (empty relations, numeric keys, duplicate
+  IDs, NULL-supervisor graph handling, table-name validation).
+
+### 0.1.1 — qwen3.5 audit hardening
+
+- Fixed DuckDB connection isolation (`_run_sql_on_default`).
+- Added NULL `employee_id` validation and improved error guidance.
+- Rewrote `p.value` / `conf.low` dotted names on DuckDB write.
+- Added MIT LICENSE, CI workflow, and Changelog.
+
+### 0.1.0 — Initial release
+
+- Core hierarchy functions: `hierarchy_valid`, `hierarchy_long`,
+  `hierarchy_wide`, `hierarchy_stats`.
+- Graph algorithms: `betweenness`, `pagerank`, `connected_components`,
+  `shortest_path` (NetworkX backend, DuckPGQ slot reserved).
+- Stats integration via optional `broom-sm` extra.

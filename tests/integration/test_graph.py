@@ -202,6 +202,60 @@ class TestConnectedComponents:
         assert set(result["size"].tolist()) == {2}
 
 
+# ─── NULL-supervisor handling (P0-3 regression) ───────────────────────────
+
+class TestGraphNullSupervisors:
+    """Regression tests for passing raw org relations with NULL supervisors.
+
+    Before the fix: ``betweenness`` raised ``ValueError: None cannot be a
+    node`` because the edge materializer included root rows where
+    ``supervisor_id`` was NULL.
+    """
+
+    @pytest.fixture
+    def raw_org_with_null_sup(self):
+        return duckdb.sql(
+            "SELECT * FROM (VALUES "
+            "('E001', CAST(NULL AS VARCHAR)), "
+            "('E002', 'E001'), "
+            "('E003', 'E001')) t(employee_id, supervisor_id)"
+        )
+
+    def test_betweenness_ignores_null_supervisors(self, raw_org_with_null_sup):
+        result = betweenness(
+            raw_org_with_null_sup, "employee_id", "supervisor_id"
+        ).df()
+        assert len(result) == 3
+        assert set(result["node_id"].tolist()) == {"E001", "E002", "E003"}
+
+    def test_pagerank_ignores_null_supervisors(self, raw_org_with_null_sup):
+        result = pagerank(
+            raw_org_with_null_sup, "employee_id", "supervisor_id"
+        ).df()
+        assert len(result) == 3
+        assert (result["pagerank"] > 0).all()
+
+    def test_connected_components_ignores_null_supervisors(self, raw_org_with_null_sup):
+        result = connected_components(
+            raw_org_with_null_sup, "employee_id", "supervisor_id"
+        ).df()
+        assert len(result) == 1
+        assert result.iloc[0]["size"] == 3
+
+    def test_shortest_path_source_target_not_in_graph(self):
+        rel = duckdb.sql(
+            "SELECT * FROM (VALUES "
+            "('E001', CAST(NULL AS VARCHAR)), "
+            "('E002', 'E001')) t(employee_id, supervisor_id)"
+        )
+        result = shortest_path(
+            rel, "employee_id", "supervisor_id", "E001", "GHOST"
+        ).df()
+        assert len(result) == 1
+        assert pd.isna(result.iloc[0]["path_length"])
+        assert result.iloc[0]["path"] == ""
+
+
 # ─── DuckPGQ backend (smoke tests for the not-installable path) ─────────────
 
 class TestDuckPGQBackend:
