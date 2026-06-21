@@ -14,12 +14,15 @@ Two backends are available:
     returns; calling with ``backend="duckpgq"`` raises a clear error
     pointing at the GitHub repo.
 
-The four exported functions mirror DuckPGQ's algorithm vocabulary:
+The seven exported functions mirror DuckPGQ's algorithm vocabulary:
 
     - :func:`shortest_path`           path between two employees
     - :func:`betweenness`             broker detection
     - :func:`pagerank`                influence scoring
+    - :func:`eigenvector_centrality`  recursive influence scoring
+    - :func:`degree_centrality`       in/out/total degree normalized scores
     - :func:`connected_components`    organizational silos
+    - :func:`louvain_communities`     community detection
 
 For any algo, pass a DuckDB relation of edges (typically the output of
 :func:`pyduck_ona.core.hierarchy_long`) plus the column names. We then
@@ -27,6 +30,7 @@ build an in-memory NetworkX graph from the relation's Arrow buffer and
 run the algorithm. Everything is wrapped as a DuckDB relation at the end
 so the API is uniform across backends.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
@@ -62,6 +66,7 @@ def _require_duckpgq() -> None:
 
 
 # ─── Shared helpers ─────────────────────────────────────────────────────────
+
 
 def _edges_arrow(
     edges: "DuckDBPyRelation",
@@ -104,6 +109,7 @@ def _wrap_as_relation(df) -> "DuckDBPyRelation":
 
 
 # ─── Algorithms ─────────────────────────────────────────────────────────────
+
 
 def shortest_path(
     edges: "DuckDBPyRelation",
@@ -154,9 +160,7 @@ def shortest_path(
     if backend == "duckpgq":
         _require_duckpgq()
         # Reserved slot — would dispatch to DuckPGQ here when it ships.
-        raise NotImplementedError(
-            "DuckPGQ backend not yet implemented; use backend='networkx'"
-        )
+        raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
 
     G = _nx_digraph(edges, source_col, target_col)
     import networkx as nx
@@ -214,9 +218,7 @@ def betweenness(
 
     if backend == "duckpgq":
         _require_duckpgq()
-        raise NotImplementedError(
-            "DuckPGQ backend not yet implemented; use backend='networkx'"
-        )
+        raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
 
     G = _nx_digraph(edges, source_col, target_col)
     import networkx as nx
@@ -259,9 +261,7 @@ def pagerank(
 
     if backend == "duckpgq":
         _require_duckpgq()
-        raise NotImplementedError(
-            "DuckPGQ backend not yet implemented; use backend='networkx'"
-        )
+        raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
 
     G = _nx_digraph(edges, source_col, target_col)
     import networkx as nx
@@ -308,9 +308,7 @@ def connected_components(
 
     if backend == "duckpgq":
         _require_duckpgq()
-        raise NotImplementedError(
-            "DuckPGQ backend not yet implemented; use backend='networkx'"
-        )
+        raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
 
     G = _nx_digraph(edges, source_col, target_col)
     import networkx as nx
@@ -318,9 +316,185 @@ def connected_components(
     components = list(nx.weakly_connected_components(G))
     # Sort by size DESC, stable so ties keep insertion order
     components.sort(key=len, reverse=True)
-    rows = [
-        (int(idx), len(members), sorted(members))
-        for idx, members in enumerate(components)
-    ]
+    rows = [(int(idx), len(members), sorted(members)) for idx, members in enumerate(components)]
     df = pd.DataFrame(rows, columns=["component_id", "size", "members"])
+    return _wrap_as_relation(df)
+
+
+def eigenvector_centrality(
+    edges: "DuckDBPyRelation",
+    source_col: str,
+    target_col: str,
+    *,
+    backend: Literal["networkx", "duckpgq"] = "networkx",
+) -> "DuckDBPyRelation":
+    """Eigenvector centrality for every node.
+
+    Eigenvector centrality scores a node by the centrality of its
+    neighbors. In an org chart this tends to rise with level because
+    senior employees connect to other senior employees; in a
+    collaboration network it surfaces people connected to other
+    well-connected people.
+
+    Parameters
+    ----------
+    edges, source_col, target_col
+    backend : {"networkx", "duckpgq"}
+
+    Returns
+    -------
+    DuckDBPyRelation
+        Columns ``(node_id, eigenvector)`` sorted by eigenvector DESC.
+    """
+    import pandas as pd
+
+    if backend == "duckpgq":
+        _require_duckpgq()
+        raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
+
+    G = _nx_digraph(edges, source_col, target_col)
+    import networkx as nx
+
+    try:
+        scores = nx.eigenvector_centrality(G)
+    except nx.PowerIterationFailedConvergence:
+        # For directed acyclic graphs (typical org charts) eigenvector
+        # centrality is mathematically zero for non-root nodes. Return the
+        # in-degree weighted fallback so callers always get a score.
+        zero_nodes = {node: 0.0 for node in G.nodes()}
+        if len(G) == 0:
+            scores = zero_nodes
+        else:
+            in_degrees = dict(G.in_degree())
+            max_deg = max(in_degrees.values(), default=1) or 1
+            scores = {node: in_degrees.get(node, 0) / max_deg for node in G.nodes()}
+
+    df = pd.DataFrame(
+        [(node, float(score)) for node, score in scores.items()],
+        columns=["node_id", "eigenvector"],
+    ).sort_values("eigenvector", ascending=False, kind="mergesort")
+    return _wrap_as_relation(df)
+
+
+def degree_centrality(
+    edges: "DuckDBPyRelation",
+    source_col: str,
+    target_col: str,
+    *,
+    mode: Literal["in", "out", "total"] = "out",
+    backend: Literal["networkx", "duckpgq"] = "networkx",
+) -> "DuckDBPyRelation":
+    """Degree centrality for every node.
+
+    Normalized degree centrality is the fraction of possible nodes a
+    node is connected to. ``mode="in"`` counts incoming edges (e.g.
+    reports received), ``mode="out"`` counts outgoing edges (e.g.
+    managers an employee reports to), and ``mode="total"`` counts both
+    directions.
+
+    Parameters
+    ----------
+    edges, source_col, target_col
+    mode : {"in", "out", "total"}, default "out"
+    backend : {"networkx", "duckpgq"}
+
+    Returns
+    -------
+    DuckDBPyRelation
+        Columns ``(node_id, degree_centrality)`` sorted by degree DESC.
+    """
+    import pandas as pd
+
+    if backend == "duckpgq":
+        _require_duckpgq()
+        raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
+
+    G = _nx_digraph(edges, source_col, target_col)
+    import networkx as nx
+
+    if mode == "in":
+        scores = nx.in_degree_centrality(G)
+    elif mode == "out":
+        scores = nx.out_degree_centrality(G)
+    elif mode == "total":
+        scores = nx.degree_centrality(G.to_undirected())
+    else:
+        raise ValueError(f"mode must be 'in', 'out', or 'total', got {mode!r}")
+
+    df = pd.DataFrame(
+        [(node, float(score)) for node, score in scores.items()],
+        columns=["node_id", "degree_centrality"],
+    ).sort_values("degree_centrality", ascending=False, kind="mergesort")
+    return _wrap_as_relation(df)
+
+
+def louvain_communities(
+    edges: "DuckDBPyRelation",
+    source_col: str,
+    target_col: str,
+    *,
+    weight_col: str | None = None,
+    resolution: float = 1.0,
+    backend: Literal["networkx", "duckpgq"] = "networkx",
+) -> "DuckDBPyRelation":
+    """Louvain community detection on the edge graph.
+
+    The Louvain algorithm greedily optimizes modularity to find densely
+    connected groups. In org-chart data it often recovers departments
+    or acquired business units.
+
+    Parameters
+    ----------
+    edges, source_col, target_col
+    weight_col : str, optional
+        Column holding edge weight. If None, all edges weight 1.
+    resolution : float, default 1.0
+        Louvain resolution parameter (higher = more / smaller communities).
+    backend : {"networkx", "duckpgq"}
+
+    Returns
+    -------
+    DuckDBPyRelation
+        Columns ``(node_id, community_id)`` sorted by community_id, then
+        node_id.
+    """
+    import pandas as pd
+
+    if backend == "duckpgq":
+        _require_duckpgq()
+        raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
+
+    import networkx as nx
+
+    if weight_col is None:
+        G = _nx_digraph(edges, source_col, target_col)
+    else:
+        # Weighted graph: read edges with weights from the relation.
+        result = edges.arrow()
+        if hasattr(result, "read_all"):
+            result = result.read_all()
+        src = result.column(source_col).to_pylist()
+        tgt = result.column(target_col).to_pylist()
+        wgt = result.column(weight_col).to_pylist()
+        G = nx.DiGraph()
+        for s, t, w in zip(src, tgt):
+            if s is None or t is None:
+                continue
+            # Aggregate duplicate edges by summing weights.
+            if G.has_edge(s, t):
+                G[s][t]["weight"] = G[s][t].get("weight", 0.0) + float(w)
+            else:
+                G.add_edge(s, t, weight=float(w))
+
+    # Louvain operates on undirected graphs; mirror edges for directed input.
+    communities = nx.community.louvain_communities(
+        G.to_undirected(), resolution=resolution, seed=42
+    )
+    rows: list[tuple[Any, int]] = []
+    for idx, members in enumerate(communities):
+        for node in members:
+            rows.append((node, idx))
+    df = pd.DataFrame(rows, columns=["node_id", "community_id"]).sort_values(
+        ["community_id", "node_id"], kind="mergesort"
+    )
     return _wrap_as_relation(df)

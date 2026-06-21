@@ -253,6 +253,22 @@ Maintained by EzraAir555.
 
 ## Changelog
 
+### 0.1.3 — DuckONA analysis layer
+
+- Added `pyduck_ona.DuckONA` high-level class for end-to-end HR analytics:
+  - Load HRIS, compensation, turnover, survey, retirement, promotion, skills,
+    and attendance tables.
+  - Validate keys, drop duplicates, and reject future/out-of-range dates.
+  - Build org-chart edges and compute centrality metrics.
+  - Join metrics back to HRIS and run OLS/logistic/ANOVA/chi-square models.
+  - Slice HR tables temporally for before/after analysis.
+- Added new graph metrics: `eigenvector_centrality`, `degree_centrality`,
+  `louvain_communities`.
+- Added pure-Python MRQAP helper for matrix regression under network
+  dependence (no R dependency).
+- Added `examples/hr_compensation_mobility_analysis.py` and
+  `tests/integration/test_analysis.py`.
+
 ### 0.1.2 — Kimi review hardening
 
 - Fixed empty-relation crash in all four hierarchy functions.

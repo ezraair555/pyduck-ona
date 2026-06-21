@@ -29,9 +29,13 @@ from pyduck_ona.bridge import to_igraph, to_networkx
 from pyduck_ona.graph import (
     betweenness,
     connected_components,
+    degree_centrality,
+    eigenvector_centrality,
+    louvain_communities,
     pagerank,
     shortest_path,
 )
+from pyduck_ona.analysis import DuckONA
 from pyduck_ona import stats as _stats
 
 # Re-export the public stats functions at the top level. The full set
@@ -61,7 +65,11 @@ __all__ = [
     "shortest_path",
     "betweenness",
     "pagerank",
+    "eigenvector_centrality",
+    "degree_centrality",
     "connected_components",
+    "louvain_communities",
+    "DuckONA",
     "correlation",
     "anova",
     "ols",
