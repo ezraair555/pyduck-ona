@@ -9,7 +9,7 @@ description = "DuckDB-native People Analytics and Organizational Network Analysi
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "John C. Vallier", email = "jcvallier.cpa@gmail.com"},
+    {name = "EzraAir555", email = "ezraair555@gmail.com"},
 ]
 maintainers = [
     {name = "EzraAir555", email = "noreply@ezraair555.ai"},
