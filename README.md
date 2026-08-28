@@ -266,6 +266,47 @@ Maintained by EzraAir555.
 
 ## Changelog
 
+### 0.2.0 — DuckONATemporal (time-series ONA)
+
+- Added `pyduck_ona.DuckONATemporal` class for time-series analysis of
+  organizational networks across multiple HRIS snapshots.
+  - 8 analytical methods: `compute_temporal_metrics`, `network_evolution`,
+    `event_window`, `change_detection`, `mobility_leaderboard`,
+    `career_trajectory`, `manager_chain`, `mobility_anomaly`,
+    `manager_effectiveness`.
+  - 20 query primitives under `dt.q.*` namespace across 5 categories:
+    trajectory (`trajectory_at`, `trajectory_diff`, `trajectory_pivot`,
+    `trajectory_rank`), hierarchy change (`edges_added`, `edges_removed`,
+    `node_set_diff`, `hierarchy_drift`), subtree (`subtree_at`,
+    `subtree_size_at`, `subtree_growth`, `subtree_overlap`), snapshot
+    compare (`delta_table`, `new_centers`, `fallen_centers`,
+    `cohort_compare`), and window aggregate (`window_mean`,
+    `window_trend`, `window_rank_change`, `window_volatility`).
+  - Mixed return style: DuckDB relations for traversals (compose with
+    SQL), DataFrames for terminal aggregations.
+- Added `DuckONA.predict_engagement` helper for engagement prediction
+  via OLS or logistic regression; results registered as a DuckDB table.
+- Added 88 integration tests across 5 files:
+  - `test_temporal.py` (29): API contract for the 8 analytical methods.
+  - `test_temporal_primitives.py` (29): API contract for the 20 primitives.
+  - `test_temporal_simulation.py` (10): Principle #9 DGP tests —
+    plant known signals and verify recovery.
+  - `test_temporal_properties.py` (14): Hypothesis fuzzing + edge
+    cases (NaN, unicode, integer IDs, single-period).
+  - `test_temporal_performance.py` (6): Scaling benchmarks at 50/100/500
+    employees; memory-bounded check.
+  - `test_simulation.py` (added previously): OLS + logistic + MRQAP
+    coefficient recovery from known DGP.
+- Added 4 docs:
+  - `docs/temporal_ona_tutorial.md`: usage walkthrough.
+  - `docs/temporal_api_reference.md`: per-method API reference.
+  - `docs/temporal_cookbook.md`: 10 real-world query recipes.
+  - `docs/when_to_use_pyduck_ona.md`: one-page decision guide for
+    People Analytics teams.
+- Fixed `NA`-comparison bug in `mobility_leaderboard` exposed by
+  property-based testing (NaN supervisor IDs caused
+  `TypeError: boolean value of NA is ambiguous`).
+
 ### 0.1.5 — P2 polish: rename, docs, ERGM note
 
 - Added `node_id_col` parameter to graph metric functions so callers can
