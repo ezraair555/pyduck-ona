@@ -48,6 +48,7 @@ dependencies = [
 viz = [
     "matplotlib>=3.8",
     "pyvis>=0.3",
+    "seaborn>=0.13",
 ]
 graph = [
     # Currently a placeholder — DuckPGQ is not installable from the
@@ -66,11 +67,14 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
     "pytest-asyncio>=0.23",
+    "hypothesis>=6.0",
     "mypy>=1.8",
     "ruff>=0.3",
     "black>=24.0",
     "isort>=5.13",
-    "pyduck-janitor>=0.1",
+    # pyduck-janitor is referenced as a future integration target but
+    # is not on PyPI; install from GitHub so CI can resolve it.
+    "pyduck-janitor @ git+https://github.com/ezraair555/pyduck-janitor@v0.1.2",
     "statsmodels>=0.14",
 ]
 
