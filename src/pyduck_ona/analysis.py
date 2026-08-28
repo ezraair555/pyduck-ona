@@ -651,6 +651,51 @@ class DuckONA:
         """Model comparison; delegates to ``pyduck_ona.stats.model_compare``."""
         return _stats.model_compare(models)
 
+    def predict_engagement(
+        self,
+        data: pd.DataFrame | DuckDBPyRelation,
+        formula: str,
+        *,
+        table_name: str = "engagement_predictions",
+        new_data: pd.DataFrame | DuckDBPyRelation | None = None,
+        stat_type: Literal["ols", "logit"] | None = None,
+        **kwargs,
+    ) -> pd.DataFrame:
+        """Predict engagement scores based on demographics and ONA metrics.
+
+        If the response variable in the formula is continuous, this uses OLS;
+        if binary, it uses logistic regression. The results are registered
+        as a table in DuckDB for downstream SQL analysis.
+        """
+        # Infer stat_type from formula/data if not provided
+        if stat_type is None:
+            resp_col = formula.split("~")[0].strip()
+            df_check = data.df() if hasattr(data, "df") else data
+            unique_vals = df_check[resp_col].unique()
+            stat_type = "logit" if len(unique_vals) <= 2 else "ols"
+
+        # Use statsmodels directly to handle prediction without broom-sm overhead
+        import statsmodels.formula.api as smf
+        df_train = data.df() if hasattr(data, "df") else data
+
+        if stat_type == "logit":
+            model = smf.logit(formula, data=df_train).fit(disp=0)
+        else:
+            model = smf.ols(formula, data=df_train).fit()
+
+        # Predict on training or new data
+        predict_df = new_data.df() if (new_data is not None and hasattr(new_data, "df")) else (new_data if new_data is not None else df_train)
+
+        predictions = model.predict(predict_df)
+        results = predict_df.copy() if isinstance(predict_df, pd.DataFrame) else pd.DataFrame(predict_df)
+        results["predicted_score"] = predictions
+
+        # Register result back into DuckDB
+        _validate_table_name(table_name)
+        self.con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM results")
+
+        return results
+
     # ── Temporal slicing ──────────────────────────────────────────────────
 
     def build_temporal_slices(

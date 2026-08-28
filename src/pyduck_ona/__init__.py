@@ -36,6 +36,7 @@ from pyduck_ona.graph import (
     shortest_path,
 )
 from pyduck_ona.analysis import DuckONA
+from pyduck_ona.temporal import DuckONATemporal
 from pyduck_ona import stats as _stats
 
 # Re-export the public stats functions at the top level. The full set
@@ -70,6 +71,7 @@ __all__ = [
     "connected_components",
     "louvain_communities",
     "DuckONA",
+    "DuckONATemporal",
     "correlation",
     "anova",
     "ols",
