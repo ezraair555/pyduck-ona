@@ -219,7 +219,6 @@ def _run_sql_on_default(
     # DuckDB 1.3+ returns a streaming RecordBatchReader; materialize.
     if hasattr(arrow_table, "read_all"):
         arrow_table = arrow_table.read_all()
-    df = arrow_table.to_pandas()
 
     bound_sql = (
         sql.replace("{INPUT}", view_name) if "{INPUT}" in sql
@@ -227,7 +226,11 @@ def _run_sql_on_default(
     )
 
     try:
-        duckdb.register(view_name, df)
+        # Register the Arrow table directly to preserve the original
+        # schema (VARCHAR stays VARCHAR, INT32 stays INT32). Going
+        # through pandas first can coerce types and break downstream
+        # SQL (e.g., recursive CTEs that infer schema from the input).
+        duckdb.register(view_name, arrow_table)
         result = duckdb.sql(bound_sql, params=params) if params else duckdb.sql(bound_sql)
         # Force execution while the view is still alive. Arrow round-trip
         # materializes all rows; the result is no longer dependent on
