@@ -322,6 +322,63 @@ class TestManagerEffectiveness:
         assert len(eff) > 0
 
 
+class TestCareerMarkov:
+    def test_markov_matrix_has_probabilities(self, dt_basic: DuckONATemporal) -> None:
+        matrix = dt_basic.career_markov_matrix(state_col="job_level", lookback="4Q", by="department")
+        assert {"segment", "from_state", "to_state", "transitions", "probability"}.issubset(
+            set(matrix.columns)
+        )
+        if not matrix.empty:
+            grouped = matrix.groupby(["segment", "from_state"])["probability"].sum().round(6)
+            assert (grouped == 1.0).all()
+
+    def test_markov_forecast_returns_steps(self, dt_basic: DuckONATemporal) -> None:
+        forecast = dt_basic.career_markov_forecast(
+            employee_id="E_IC0001",
+            horizon=2,
+            state_col="job_level",
+            lookback="4Q",
+            by="department",
+        )
+        assert {"employee_id", "step", "state", "probability", "is_most_likely"}.issubset(
+            set(forecast.columns)
+        )
+        if not forecast.empty:
+            assert set(forecast["step"].unique()) == {1, 2}
+
+
+class TestOrgDesign:
+    def test_org_design_scorecard(self, dt_basic: DuckONATemporal) -> None:
+        scorecard = dt_basic.org_design_scorecard(lookback="4Q")
+        expected = {
+            "period",
+            "n_employees",
+            "n_components",
+            "avg_span",
+            "span_cv",
+            "max_layers",
+            "centralization",
+            "silo_index",
+            "org_design_score",
+        }
+        assert expected.issubset(set(scorecard.columns))
+        assert len(scorecard) > 0
+
+    def test_org_design_change_alerts(self, dt_basic: DuckONATemporal) -> None:
+        alerts = dt_basic.org_design_change_alerts(lookback="4Q")
+        expected = {
+            "period_from",
+            "period_to",
+            "n_span_shifts",
+            "max_span_shift",
+            "component_growth",
+            "design_score_delta",
+            "severity",
+            "reasons",
+        }
+        assert expected.issubset(set(alerts.columns))
+
+
 # ─── Simulation test (Principle #9) ────────────────────────────────────────
 
 

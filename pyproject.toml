@@ -45,6 +45,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ml = [
+    "scikit-learn>=1.5",
+]
 viz = [
     "matplotlib>=3.8",
     "pyvis>=0.3",

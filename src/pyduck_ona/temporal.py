@@ -1343,6 +1343,365 @@ class DuckONATemporal:
         result["rank"] = range(1, len(result) + 1)
         return result.reset_index(drop=True)
 
+    def career_markov_matrix(
+        self,
+        state_col: str = "job_level",
+        lookback: str = "8Q",
+        by: str | None = "department",
+    ) -> pd.DataFrame:
+        """Estimate career-transition Markov probabilities from snapshot history.
+
+        Parameters
+        ----------
+        state_col : str, default "job_level"
+            Employee state used for transitions (e.g., job_level, role_band).
+        lookback : str, default "8Q"
+            Number of periods to include.
+        by : str, optional
+            Segment column for separate transition matrices (e.g., department).
+            Set to ``None`` for one global matrix.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns: ``segment, from_state, to_state, transitions, probability``.
+            If ``by is None``, ``segment`` is ``"all"``.
+        """
+        if not self._loaded:
+            raise RuntimeError("call load_snapshots() first")
+        n_periods, _ = _parse_lookback(lookback)
+        use_periods = self._periods[-n_periods:] if len(self._periods) >= n_periods else self._periods
+        if len(use_periods) < 2:
+            return pd.DataFrame(
+                columns=["segment", "from_state", "to_state", "transitions", "probability"]
+            )
+
+        freq_word = _FREQ_MAP[self._freq]
+        emp = self._emp_col
+        seg_select = f", {_quote(by)} AS segment" if by else ", 'all' AS segment"
+        hist = self.con.sql(f"""
+            SELECT
+                {_quote(emp)} AS employee_id,
+                date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE)) AS period,
+                {_quote(state_col)} AS state
+                {seg_select}
+            FROM {self._table_name}
+            WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
+                  BETWEEN CAST('{use_periods[0]}' AS DATE) AND CAST('{use_periods[-1]}' AS DATE)
+        """).df()
+        if hist.empty:
+            return pd.DataFrame(
+                columns=["segment", "from_state", "to_state", "transitions", "probability"]
+            )
+
+        hist["period"] = pd.to_datetime(hist["period"])
+        hist = hist.sort_values(["employee_id", "period"])
+        transitions: list[dict[str, Any]] = []
+        for _, g in hist.groupby("employee_id", sort=False):
+            g = g.reset_index(drop=True)
+            for i in range(len(g) - 1):
+                frm = g.iloc[i]["state"]
+                to = g.iloc[i + 1]["state"]
+                seg = g.iloc[i]["segment"] if by else "all"
+                if pd.isna(frm) or pd.isna(to):
+                    continue
+                transitions.append(
+                    {
+                        "segment": str(seg),
+                        "from_state": str(frm),
+                        "to_state": str(to),
+                    }
+                )
+
+        if not transitions:
+            return pd.DataFrame(
+                columns=["segment", "from_state", "to_state", "transitions", "probability"]
+            )
+
+        trans_df = pd.DataFrame(transitions)
+        out = (
+            trans_df.groupby(["segment", "from_state", "to_state"], as_index=False)
+            .size()
+            .rename(columns={"size": "transitions"})
+        )
+        totals = out.groupby(["segment", "from_state"])["transitions"].transform("sum")
+        out["probability"] = out["transitions"] / totals
+        return out.sort_values(
+            ["segment", "from_state", "probability"], ascending=[True, True, False]
+        ).reset_index(drop=True)
+
+    def career_markov_forecast(
+        self,
+        employee_id: Any,
+        horizon: int = 2,
+        state_col: str = "job_level",
+        lookback: str = "8Q",
+        by: str | None = "department",
+    ) -> pd.DataFrame:
+        """Forecast future state probabilities for one employee via Markov transitions.
+
+        Parameters
+        ----------
+        employee_id : Any
+            Employee identifier.
+        horizon : int, default 2
+            Number of forward periods to forecast.
+        state_col : str, default "job_level"
+        lookback : str, default "8Q"
+        by : str, optional
+            Segment column used for segment-specific transition matrix.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns: ``employee_id, step, state, probability, is_most_likely``.
+        """
+        if horizon < 1:
+            raise ValueError("horizon must be >= 1")
+        matrix = self.career_markov_matrix(state_col=state_col, lookback=lookback, by=by)
+        if matrix.empty:
+            return pd.DataFrame(
+                columns=["employee_id", "step", "state", "probability", "is_most_likely"]
+            )
+
+        freq_word = _FREQ_MAP[self._freq]
+        emp = self._emp_col
+        seg_select = f", {_quote(by)} AS segment" if by else ", 'all' AS segment"
+        latest = self.con.sql(f"""
+            SELECT
+                {_quote(state_col)} AS state
+                {seg_select}
+            FROM {self._table_name}
+            WHERE {_quote(emp)} = '{employee_id}'
+            ORDER BY date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE)) DESC
+            LIMIT 1
+        """).df()
+        if latest.empty or pd.isna(latest.iloc[0]["state"]):
+            return pd.DataFrame(
+                columns=["employee_id", "step", "state", "probability", "is_most_likely"]
+            )
+
+        current_state = str(latest.iloc[0]["state"])
+        segment = str(latest.iloc[0]["segment"]) if by else "all"
+        matrix = matrix[matrix["segment"] == segment].copy()
+        if matrix.empty:
+            return pd.DataFrame(
+                columns=["employee_id", "step", "state", "probability", "is_most_likely"]
+            )
+
+        states = sorted(set(matrix["from_state"]).union(set(matrix["to_state"])))
+        state_to_idx = {s: i for i, s in enumerate(states)}
+        P = np.zeros((len(states), len(states)), dtype=float)
+        for _, row in matrix.iterrows():
+            P[state_to_idx[row["from_state"]], state_to_idx[row["to_state"]]] = float(
+                row["probability"]
+            )
+        for i in range(P.shape[0]):
+            row_sum = P[i].sum()
+            if row_sum == 0:
+                P[i, i] = 1.0
+
+        if current_state not in state_to_idx:
+            return pd.DataFrame(
+                columns=["employee_id", "step", "state", "probability", "is_most_likely"]
+            )
+
+        dist = np.zeros(len(states), dtype=float)
+        dist[state_to_idx[current_state]] = 1.0
+
+        rows: list[dict[str, Any]] = []
+        for step in range(1, horizon + 1):
+            dist = dist @ P
+            best_idx = int(np.argmax(dist))
+            for idx, state in enumerate(states):
+                rows.append(
+                    {
+                        "employee_id": employee_id,
+                        "step": step,
+                        "state": state,
+                        "probability": float(dist[idx]),
+                        "is_most_likely": idx == best_idx,
+                    }
+                )
+
+        return pd.DataFrame(rows).sort_values(
+            ["step", "probability"], ascending=[True, False]
+        ).reset_index(drop=True)
+
+    def org_design_scorecard(
+        self,
+        lookback: str = "8Q",
+    ) -> pd.DataFrame:
+        """Per-period organizational design metrics and a composite score.
+
+        Parameters
+        ----------
+        lookback : str, default "8Q"
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns include span/load/layering/silo metrics and
+            ``org_design_score`` (0-100, higher is healthier).
+        """
+        if not self._loaded:
+            raise RuntimeError("call load_snapshots() first")
+        n_periods, _ = _parse_lookback(lookback)
+        use_periods = self._periods[-n_periods:] if len(self._periods) >= n_periods else self._periods
+        if not use_periods:
+            return pd.DataFrame()
+
+        freq_word = _FREQ_MAP[self._freq]
+        emp = self._emp_col
+        sup = self._sup_col
+        evolution = self.network_evolution()
+        evolution = evolution[evolution["period"].isin(use_periods)].copy()
+        rows: list[dict[str, Any]] = []
+        for period in use_periods:
+            snap = self.con.sql(f"""
+                SELECT {_quote(emp)} AS employee_id, {_quote(sup)} AS supervisor_id
+                FROM {self._table_name}
+                WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
+                      = CAST('{period}' AS DATE)
+            """)
+            stats = hierarchy_stats(snap, "employee_id", "supervisor_id").df()
+            stats = stats[stats["manager_id"].notna()].copy()
+            mgr_stats = stats[stats["direct_reports"] > 0]
+            avg_span = float(mgr_stats["direct_reports"].mean()) if not mgr_stats.empty else 0.0
+            span_cv = (
+                float(mgr_stats["direct_reports"].std() / mgr_stats["direct_reports"].mean())
+                if not mgr_stats.empty and mgr_stats["direct_reports"].mean() > 0
+                else 0.0
+            )
+            max_layers = int(stats["levels_below"].max() + 1) if not stats.empty else 1
+
+            ev = evolution[evolution["period"] == period]
+            if ev.empty:
+                continue
+            n_components = int(ev.iloc[0]["n_components"])
+            n_employees = int(ev.iloc[0]["n_employees"])
+            centralization = float(ev.iloc[0]["centralization"])
+            silo_index = n_components / max(n_employees, 1)
+
+            span_score = 1.0 / (1.0 + abs(avg_span - 7.0) / 7.0)
+            layering_score = 1.0 / (1.0 + max(0, max_layers - 5))
+            silo_score = 1.0 - min(1.0, silo_index * 8.0)
+            centralization_score = 1.0 - min(1.0, centralization)
+            org_design_score = 100.0 * (
+                0.35 * span_score
+                + 0.25 * layering_score
+                + 0.20 * silo_score
+                + 0.20 * centralization_score
+            )
+
+            rows.append(
+                {
+                    "period": period,
+                    "n_employees": n_employees,
+                    "n_components": n_components,
+                    "avg_span": avg_span,
+                    "span_cv": span_cv,
+                    "max_layers": max_layers,
+                    "centralization": centralization,
+                    "silo_index": silo_index,
+                    "org_design_score": org_design_score,
+                }
+            )
+
+        return pd.DataFrame(rows)
+
+    def org_design_change_alerts(
+        self,
+        lookback: str = "8Q",
+        span_shift_threshold: int = 3,
+        component_growth_threshold: float = 0.25,
+    ) -> pd.DataFrame:
+        """Flag periods with potentially unhealthy organizational-design shifts.
+
+        Parameters
+        ----------
+        lookback : str, default "8Q"
+        span_shift_threshold : int, default 3
+            Trigger when >= this many managers change direct reports by 2+.
+        component_growth_threshold : float, default 0.25
+            Trigger when weak components grow by this fraction period-over-period.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per period transition with alert flags and severity.
+        """
+        scorecard = self.org_design_scorecard(lookback=lookback)
+        if scorecard.empty or len(scorecard) < 2:
+            return pd.DataFrame()
+
+        freq_word = _FREQ_MAP[self._freq]
+        emp = self._emp_col
+        sup = self._sup_col
+        alerts: list[dict[str, Any]] = []
+        for i in range(1, len(scorecard)):
+            p0 = scorecard.iloc[i - 1]["period"]
+            p1 = scorecard.iloc[i]["period"]
+            snap_0 = self.con.sql(f"""
+                SELECT {_quote(emp)} AS employee_id, {_quote(sup)} AS supervisor_id
+                FROM {self._table_name}
+                WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
+                      = CAST('{p0}' AS DATE)
+            """)
+            snap_1 = self.con.sql(f"""
+                SELECT {_quote(emp)} AS employee_id, {_quote(sup)} AS supervisor_id
+                FROM {self._table_name}
+                WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
+                      = CAST('{p1}' AS DATE)
+            """)
+            s0 = hierarchy_stats(snap_0, "employee_id", "supervisor_id").df()
+            s1 = hierarchy_stats(snap_1, "employee_id", "supervisor_id").df()
+            drift = s0[["manager_id", "direct_reports"]].merge(
+                s1[["manager_id", "direct_reports"]],
+                on="manager_id",
+                how="outer",
+                suffixes=("_t", "_t1"),
+            ).fillna(0)
+            drift["delta"] = drift["direct_reports_t1"] - drift["direct_reports_t"]
+            n_span_shifts = int((drift["delta"].abs() >= 2).sum())
+            max_span_shift = float(drift["delta"].abs().max()) if not drift.empty else 0.0
+
+            comp_t = float(scorecard.iloc[i - 1]["n_components"])
+            comp_t1 = float(scorecard.iloc[i]["n_components"])
+            component_growth = ((comp_t1 - comp_t) / comp_t) if comp_t > 0 else 0.0
+
+            score_delta = float(scorecard.iloc[i]["org_design_score"] - scorecard.iloc[i - 1]["org_design_score"])
+
+            reasons: list[str] = []
+            if n_span_shifts >= span_shift_threshold:
+                reasons.append("span_shift")
+            if component_growth >= component_growth_threshold:
+                reasons.append("component_growth")
+            if score_delta <= -8.0:
+                reasons.append("design_score_drop")
+
+            if len(reasons) >= 2:
+                severity = "high"
+            elif len(reasons) == 1:
+                severity = "medium"
+            else:
+                severity = "low"
+
+            alerts.append(
+                {
+                    "period_from": p0,
+                    "period_to": p1,
+                    "n_span_shifts": n_span_shifts,
+                    "max_span_shift": max_span_shift,
+                    "component_growth": component_growth,
+                    "design_score_delta": score_delta,
+                    "severity": severity,
+                    "reasons": ",".join(reasons),
+                }
+            )
+
+        return pd.DataFrame(alerts)
+
     # ── Utility ─────────────────────────────────────────────────────────────
 
     def sql(self, query: str) -> "DuckDBPyRelation":

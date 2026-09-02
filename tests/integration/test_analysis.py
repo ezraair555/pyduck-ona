@@ -317,6 +317,22 @@ class TestJoinHris:
         assert len(df) == 7
 
 
+class TestProfileClusters:
+    def test_profile_clusters_kmeans(self, ona: DuckONA, hris_df: pd.DataFrame):
+        sklearn = pytest.importorskip("sklearn")
+        assert sklearn is not None
+        ona.load_hris(hris_df)
+        out = ona.profile_clusters(
+            features=["job_level", "department"],
+            n_clusters=2,
+            method="kmeans",
+            include_network=True,
+        )
+        assert "cluster_id" in out.columns
+        assert len(out) == len(hris_df)
+        assert out["cluster_id"].nunique() <= 2
+
+
 # ─── Model helpers ──────────────────────────────────────────────────────────
 
 class TestModelHelpers:

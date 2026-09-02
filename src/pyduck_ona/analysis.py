@@ -584,6 +584,120 @@ class DuckONA:
         """
         return self.con.sql(sql)
 
+    def profile_clusters(
+        self,
+        features: list[str],
+        n_clusters: int = 6,
+        method: Literal["kmeans", "gmm"] = "kmeans",
+        include_network: bool = True,
+        employee_id_col: str = "employee_id",
+        supervisor_id_col: str = "supervisor_id",
+        hris_table: str = "hris",
+        random_state: int = 42,
+    ) -> pd.DataFrame:
+        """Cluster employee profiles from HR attributes and optional network features.
+
+        Parameters
+        ----------
+        features : list[str]
+            Base HRIS feature columns to cluster on.
+        n_clusters : int, default 6
+            Number of profile clusters.
+        method : {"kmeans", "gmm"}, default "kmeans"
+            Clustering algorithm.
+        include_network : bool, default True
+            If True, append pagerank / betweenness / degree / louvain labels.
+        employee_id_col, supervisor_id_col : str
+            HRIS key columns.
+        hris_table : str, default "hris"
+            Name of registered HRIS table.
+        random_state : int, default 42
+            Seed for deterministic clustering.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns include employee id, ``cluster_id``, optional
+            ``cluster_confidence`` (GMM), and the feature columns used.
+        """
+        if n_clusters < 2:
+            raise ValueError("n_clusters must be >= 2")
+        if not features:
+            raise ValueError("features must contain at least one column name")
+        _validate_table_name(hris_table)
+
+        hris = self.con.sql(f"SELECT * FROM {hris_table}").df()
+        if employee_id_col not in hris.columns:
+            raise ValueError(f"{employee_id_col!r} not found in {hris_table}")
+        if supervisor_id_col not in hris.columns:
+            raise ValueError(f"{supervisor_id_col!r} not found in {hris_table}")
+
+        feature_frame = hris.copy()
+        selected_features = list(features)
+
+        if include_network:
+            edges = self.build_org_edges(
+                employee_id_col=employee_id_col,
+                supervisor_id_col=supervisor_id_col,
+                table_name=hris_table,
+            )
+            net_pr = self.pagerank(edges, employee_id_col, supervisor_id_col).df().rename(
+                columns={"node_id": employee_id_col}
+            )
+            net_bt = self.betweenness(edges, employee_id_col, supervisor_id_col).df().rename(
+                columns={"node_id": employee_id_col}
+            )
+            net_deg = self.degree_centrality(
+                edges, employee_id_col, supervisor_id_col, mode="total"
+            ).df().rename(columns={"node_id": employee_id_col})
+            net_com = self.louvain_communities(
+                edges, employee_id_col, supervisor_id_col
+            ).df().rename(columns={"node_id": employee_id_col})
+            feature_frame = feature_frame.merge(net_pr, on=employee_id_col, how="left")
+            feature_frame = feature_frame.merge(net_bt, on=employee_id_col, how="left")
+            feature_frame = feature_frame.merge(net_deg, on=employee_id_col, how="left")
+            feature_frame = feature_frame.merge(net_com, on=employee_id_col, how="left")
+            selected_features.extend(
+                ["pagerank", "betweenness", "degree_centrality", "community_id"]
+            )
+
+        missing = [c for c in selected_features if c not in feature_frame.columns]
+        if missing:
+            raise ValueError(f"missing feature column(s): {missing}")
+
+        model_input = feature_frame[selected_features].copy()
+        model_input = pd.get_dummies(model_input, dummy_na=True)
+        for col in model_input.columns:
+            if model_input[col].isna().any():
+                if pd.api.types.is_numeric_dtype(model_input[col]):
+                    model_input[col] = model_input[col].fillna(model_input[col].median())
+                else:
+                    model_input[col] = model_input[col].fillna("UNKNOWN")
+
+        from sklearn.preprocessing import StandardScaler
+
+        X = StandardScaler().fit_transform(model_input.to_numpy(dtype=float))
+
+        if method == "kmeans":
+            from sklearn.cluster import KMeans
+
+            model = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
+            labels = model.fit_predict(X)
+            confidence = np.full(len(labels), np.nan)
+        elif method == "gmm":
+            from sklearn.mixture import GaussianMixture
+
+            model = GaussianMixture(n_components=n_clusters, random_state=random_state)
+            labels = model.fit_predict(X)
+            confidence = model.predict_proba(X).max(axis=1)
+        else:
+            raise ValueError("method must be 'kmeans' or 'gmm'")
+
+        out = feature_frame[[employee_id_col] + selected_features].copy()
+        out["cluster_id"] = labels.astype(int)
+        out["cluster_confidence"] = confidence
+        return out.sort_values([employee_id_col]).reset_index(drop=True)
+
     # ── Model helpers ───────────────────────────────────────────────────────
 
     def ols(
