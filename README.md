@@ -173,6 +173,10 @@ parameters, return types, and runnable examples. Click any link below to jump
 to its reference page. Pages are regenerated from source docstrings by
 `python scripts/generate_api_docs.py`.
 
+For agents and contributors: see [`docs/ai_contributor_guide.md`](docs/ai_contributor_guide.md)
+and [`AGENTS.md`](AGENTS.md) for the project style, CI runbook, and extension-integration
+pattern.
+
 ### DuckONAFrame (v0.3)
 
 | Function / Class | Description |

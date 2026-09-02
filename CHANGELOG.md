@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Regression tests for quarter-end and year-end snapshot frequencies in `q.*` temporal primitives.
 - README now contains a full API catalog with links to 89 per-function reference pages under `docs/api/`.
 - `scripts/generate_api_docs.py` auto-generates `docs/api/*.md` pages from live docstrings and signatures.
+- Added `docs/ai_contributor_guide.md` and repo-level `AGENTS.md` as the AI/CI runbook and project-specific agent onboarding.
 - Full-text search (`fts`) and vector similarity search (`vss`) helpers:
   - `text_search`, `build_fts_index`, `drop_fts_index`
   - `vector_search`, `build_vector_index`, `drop_vector_index`
