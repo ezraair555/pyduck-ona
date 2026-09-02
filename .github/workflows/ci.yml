@@ -1,0 +1,82 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install lint tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+      - name: Ruff check
+        run: ruff check .
+
+  typecheck:
+    name: typecheck (mypy)
+    runs-on: ubuntu-latest
+    # Strict typing is a goal but not gating yet. Remove continue-on-error
+    # once `mypy src/pyduck_ona` is clean.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package + typecheck deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install mypy
+      - name: Run mypy
+        run: mypy src/pyduck_ona
+
+  test:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install package + test extras
+        run: |
+          python -m pip install --upgrade pip
+          # [broom] pulls broom-sm from git; [viz] for matplotlib in plot tests.
+          pip install -e ".[broom,viz,dev]"
+      - name: Run pytest
+        run: pytest tests/ -v --tb=short
+
+  agent-ci:
+    name: agent CI runner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package + CI deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[broom,viz,dev]"
+          pip install ruff mypy
+      - name: Run agent CI script (JSON)
+        run: python scripts/agent_ci.py --format json
