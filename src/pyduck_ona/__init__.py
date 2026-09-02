@@ -28,6 +28,7 @@ from pyduck_ona.core import (
     hierarchy_valid,
     hierarchy_wide,
 )
+from pyduck_ona.frame import DuckONAFrame
 from pyduck_ona.graph import (
     betweenness,
     connected_components,
@@ -71,6 +72,7 @@ __all__ = [
     "connected_components",
     "louvain_communities",
     "DuckONA",
+    "DuckONAFrame",
     "DuckONATemporal",
     "correlation",
     "anova",
