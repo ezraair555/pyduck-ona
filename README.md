@@ -79,6 +79,60 @@ ona = pona.DuckONA.from_janitor(dj, hris_table="hris")
 issues = pona.hierarchy_valid(ona.table("hris"), "employee_id", "supervisor_id")
 ```
 
+## Golden flow: from raw HRIS to org-design insights
+
+```python
+import pandas as pd
+import pyduck_ona as pona
+
+# 1. Load snapshots with quarterly history
+snapshots = pd.DataFrame([
+    {"employee_id": "CEO", "supervisor_id": None, "department": "Exec",
+     "job_level": 7, "snapshot_date": "2025-01-31"},
+    {"employee_id": "VP1", "supervisor_id": "CEO", "department": "Sales",
+     "job_level": 6, "snapshot_date": "2025-01-31"},
+    {"employee_id": "M1", "supervisor_id": "VP1", "department": "Sales",
+     "job_level": 5, "snapshot_date": "2025-01-31"},
+    {"employee_id": "IC1", "supervisor_id": "M1", "department": "Sales",
+     "job_level": 3, "snapshot_date": "2025-01-31"},
+    # ... same people, moved / promoted in Q2
+    {"employee_id": "CEO", "supervisor_id": None, "department": "Exec",
+     "job_level": 7, "snapshot_date": "2025-04-30"},
+    {"employee_id": "VP1", "supervisor_id": "CEO", "department": "Sales",
+     "job_level": 6, "snapshot_date": "2025-04-30"},
+    {"employee_id": "M1", "supervisor_id": "VP1", "department": "Sales",
+     "job_level": 5, "snapshot_date": "2025-04-30"},
+    {"employee_id": "IC1", "supervisor_id": "M1", "department": "Sales",
+     "job_level": 4, "snapshot_date": "2025-04-30"},  # promotion
+])
+
+# 2. Hierarchy integrity check (run on a single snapshot)
+rel, _ = pona.to_duckdb(
+    snapshots.query("snapshot_date == '2025-04-30'"), "hris"
+)
+issues = pona.hierarchy_valid(rel, "employee_id", "supervisor_id")
+print(issues.df())
+
+# 3. Static org-design + ONA on the latest snapshot
+edges, _ = pona.to_duckdb(
+    snapshots.query("snapshot_date == '2025-04-30'"), "latest"
+)
+brokers = pona.betweenness(edges, "employee_id", "supervisor_id")
+influencers = pona.pagerank(edges, "employee_id", "supervisor_id")
+spans = pona.hierarchy_stats(edges, "employee_id", "supervisor_id")
+
+# 4. Temporal analytics
+dt = pona.DuckONATemporal(":memory:")
+dt.load_snapshots(snapshots, snapshot_date_col="snapshot_date", freq="Q")
+trends = dt.compute_temporal_metrics()
+
+# 5. Career Markov + org-design scorecard
+transitions = dt.career_markov_matrix(state_col="job_level", lookback="2Q")
+forecast = dt.career_markov_forecast("IC1", horizon=2, state_col="job_level")
+scorecard = dt.org_design_scorecard(lookback="2Q")
+alerts = dt.org_design_change_alerts(lookback="2Q")
+```
+
 ## Short aliases (optional)
 
 For convenience, the four hierarchy functions are also available as
