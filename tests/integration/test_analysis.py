@@ -8,7 +8,6 @@ pure-Python MRQAP helper.
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any
 
 import duckdb
 import numpy as np
@@ -16,12 +15,6 @@ import pandas as pd
 import pytest
 
 from pyduck_ona import DuckONA
-from pyduck_ona.graph import (
-    degree_centrality,
-    eigenvector_centrality,
-    louvain_communities,
-)
-
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -257,8 +250,8 @@ class TestOrgEdges:
 class TestJanitorBridge:
     def test_from_janitor_reuses_relation(self, hris_df: pd.DataFrame):
         janitor_mod = pytest.importorskip("pyduck_janitor")
-        DuckJanitor = janitor_mod.DuckJanitor
-        dj = DuckJanitor.from_pandas(hris_df)
+        duck_janitor = janitor_mod.DuckJanitor
+        dj = duck_janitor.from_pandas(hris_df)
         ona = DuckONA.from_janitor(dj)
         edges = ona.build_org_edges()
         assert len(edges.df()) == 6
@@ -388,7 +381,8 @@ class TestTemporalSlices:
             assert isinstance(rel, duckdb.DuckDBPyRelation)
             assert start <= end
             # Label should contain year-month
-            assert isinstance(label, str) and len(label) >= 4
+            assert isinstance(label, str)
+            assert len(label) >= 4
 
     def test_build_temporal_slices_daily(self, ona: DuckONA, attendance_df: pd.DataFrame):
         ona.load_attendance(attendance_df)
@@ -402,9 +396,9 @@ class TestMRQAP:
     def test_mrqap_returns_p_values_in_zero_one(self):
         n = 12
         rng = np.random.default_rng(seed=1)
-        Y = rng.random((n, n))
-        X = [rng.random((n, n)) for _ in range(2)]
-        result = DuckONA.mrqap(Y, X, n_permutations=200)
+        y = rng.random((n, n))
+        x = [rng.random((n, n)) for _ in range(2)]
+        result = DuckONA.mrqap(y, x, n_permutations=200)
         assert "coefficients" in result
         assert "p_values" in result
         assert "r2" in result
@@ -412,7 +406,7 @@ class TestMRQAP:
             assert 0.0 <= p <= 1.0
 
     def test_mrqap_invalid_shape(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"X matrix 0 shape \(2, 2\) does not match Y shape \(3, 3\)"):
             DuckONA.mrqap(np.zeros((3, 3)), [np.zeros((2, 2))], n_permutations=50)
 
 

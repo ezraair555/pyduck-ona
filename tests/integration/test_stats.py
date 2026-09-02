@@ -28,7 +28,6 @@ import pytest
 
 import pyduck_ona as pona
 
-
 ARTIFACTS = Path(__file__).parent.parent / "_artifacts"
 ARTIFACTS.mkdir(exist_ok=True)
 
@@ -197,7 +196,7 @@ class TestANOVA:
             bp = ax.boxplot(groups, labels=["Eng", "Ops", "Sales", "HR"],
                             patch_artist=True, showmeans=True)
         for patch, color in zip(bp["boxes"],
-                                 ["#4C72B0", "#DD8452", "#55A467", "#C44E52"]):
+                                 ["#4C72B0", "#DD8452", "#55A467", "#C44E52"], strict=False):
             patch.set_facecolor(color)
             patch.set_alpha(0.7)
         ax.set_ylabel("Salary ($)")
@@ -385,7 +384,7 @@ class TestDuckDBIO:
         error should be a clear DuckDB InvalidInputException, not a
         cryptic pyduck-ona traceback."""
         con = duckdb.connect()
-        with pytest.raises(Exception) as excinfo:
+        with pytest.raises(duckdb.Error) as excinfo:
             pona.to_duckdb(hr_rel, "test_table", con=con)
         # The underlying DuckDB error is the right thing to surface
         assert "not suitable for replacement scan" in str(excinfo.value).lower() or \

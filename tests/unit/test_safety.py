@@ -40,6 +40,7 @@ class TestIdentifierInjectionAttempt:
     def test_injection_via_column_name_does_nothing(self, simple_org):
         # Rename the column to a SQL-injection attempt
         import duckdb
+
         from pyduck_ona.core import hierarchy_valid
 
         rel = duckdb.sql("""

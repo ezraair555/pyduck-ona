@@ -19,13 +19,15 @@ try:
 except _md.PackageNotFoundError:  # pragma: no cover - editable install path
     __version__ = "0.1.0"
 
+from pyduck_ona import stats as _stats
+from pyduck_ona.analysis import DuckONA
+from pyduck_ona.bridge import to_igraph, to_networkx
 from pyduck_ona.core import (
     hierarchy_long,
     hierarchy_stats,
     hierarchy_valid,
     hierarchy_wide,
 )
-from pyduck_ona.bridge import to_igraph, to_networkx
 from pyduck_ona.graph import (
     betweenness,
     connected_components,
@@ -35,9 +37,7 @@ from pyduck_ona.graph import (
     pagerank,
     shortest_path,
 )
-from pyduck_ona.analysis import DuckONA
 from pyduck_ona.temporal import DuckONATemporal
-from pyduck_ona import stats as _stats
 
 # Re-export the public stats functions at the top level. The full set
 # lives in pyduck_ona.stats (lazy import keeps the heavy broom_sm

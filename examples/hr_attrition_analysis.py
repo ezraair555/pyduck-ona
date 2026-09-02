@@ -26,7 +26,6 @@ Outputs are written to ./hr_outputs/ as CSVs and PNGs.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import duckdb
@@ -34,7 +33,6 @@ import numpy as np
 import pandas as pd
 
 import pyduck_ona as pona
-
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 HERE = Path(__file__).parent
@@ -59,7 +57,6 @@ def stage1_load() -> tuple[duckdb.DuckDBPyRelation, duckdb.DuckDBPyConnection]:
     # ── Org structure: 250 employees across 5 departments, 4 levels ──
     n_emp = 250
     departments = ["Engineering", "Sales", "Marketing", "Operations", "People"]
-    dept_weights = [0.45, 0.25, 0.10, 0.12, 0.08]
 
     # Level 0: CEO
     employees: list[dict] = [
@@ -86,7 +83,7 @@ def stage1_load() -> tuple[duckdb.DuckDBPyRelation, duckdb.DuckDBPyConnection]:
             manager_ids.append(mid)
             employees.append(dict(
                 emp_id=mid, supervisor_id=vp,
-                department=next((d for d, v in zip(departments, vps) if v == vp), "Operations"),
+                department=next((d for d, v in zip(departments, vps, strict=False) if v == vp), "Operations"),
                 job_level=2,
                 hire_date=pd.Timestamp("2019-01-01") + pd.Timedelta(days=int(rng.integers(0, 1500))),
             ))
@@ -114,7 +111,7 @@ def stage1_load() -> tuple[duckdb.DuckDBPyRelation, duckdb.DuckDBPyConnection]:
         base_salary[row.job_level]
         * (1 + rng.normal(0, 0.10))
         * (0.94 if (row.job_level <= 2 and g == "F") else 1.0)
-        for row, g in zip(org_df.itertuples(index=False), gender)
+        for row, g in zip(org_df.itertuples(index=False), gender, strict=False)
     ], dtype=float)
     comp_df = org_df[["emp_id"]].assign(
         gender=gender,
@@ -300,7 +297,7 @@ def stage5_pay_equity(rel: duckdb.DuckDBPyRelation) -> None:
     #     each row in pandas — avoiding cross-connection joins.
     df = rel.df()
     # Re-create the design matrix columns and apply coefficients.
-    coef = dict(zip(tidy["term"], tidy["estimate"]))
+    coef = dict(zip(tidy["term"], tidy["estimate"], strict=False))
     intercept = coef.get("Intercept", 0.0)
     dept_terms = {k.removeprefix("C(department)[T.").removesuffix("]"): v
                   for k, v in coef.items() if k.startswith("C(department)[T.")}

@@ -33,7 +33,7 @@ so the API is uniform across backends.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import duckdb
 
@@ -69,7 +69,7 @@ def _require_duckpgq() -> None:
 
 
 def _edges_arrow(
-    edges: "DuckDBPyRelation",
+    edges: DuckDBPyRelation,
     source_col: str,
     target_col: str,
 ) -> tuple[list, list]:
@@ -87,19 +87,19 @@ def _edges_arrow(
     )
 
 
-def _nx_digraph(edges: "DuckDBPyRelation", source_col: str, target_col: str):
+def _nx_digraph(edges: DuckDBPyRelation, source_col: str, target_col: str):
     """Build a NetworkX DiGraph from an edge relation."""
     import networkx as nx
 
     src, tgt = _edges_arrow(edges, source_col, target_col)
     # Drop rows where either endpoint is NULL before building the graph.
-    pairs = [(s, t) for s, t in zip(src, tgt) if s is not None and t is not None]
-    G = nx.DiGraph()
-    G.add_edges_from(pairs)
-    return G
+    pairs = [(s, t) for s, t in zip(src, tgt, strict=False) if s is not None and t is not None]
+    graph = nx.DiGraph()
+    graph.add_edges_from(pairs)
+    return graph
 
 
-def _wrap_as_relation(df) -> "DuckDBPyRelation":
+def _wrap_as_relation(df) -> DuckDBPyRelation:
     """Round-trip a pandas DataFrame through DuckDB to get a relation.
 
     Used so every graph function returns the same type regardless of
@@ -112,14 +112,14 @@ def _wrap_as_relation(df) -> "DuckDBPyRelation":
 
 
 def shortest_path(
-    edges: "DuckDBPyRelation",
+    edges: DuckDBPyRelation,
     source_col: str,
     target_col: str,
     source: str,
     target: str,
     *,
     backend: Literal["networkx", "duckpgq"] = "networkx",
-) -> "DuckDBPyRelation":
+) -> DuckDBPyRelation:
     """Shortest path between two nodes in the edge graph.
 
     Parameters
@@ -162,10 +162,10 @@ def shortest_path(
         # Reserved slot — would dispatch to DuckPGQ here when it ships.
         raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
 
-    G = _nx_digraph(edges, source_col, target_col)
+    graph = _nx_digraph(edges, source_col, target_col)
     import networkx as nx
 
-    if source not in G or target not in G:
+    if source not in graph or target not in graph:
         # Source or target not in graph at all → no path possible.
         result_df = pd.DataFrame(
             [(source, target, None, "")],
@@ -174,7 +174,7 @@ def shortest_path(
         return _wrap_as_relation(result_df)
 
     try:
-        node_path = nx.shortest_path(G, source=source, target=target)
+        node_path = nx.shortest_path(graph, source=source, target=target)
         path_str = "->".join(str(n) for n in node_path)
         length = len(node_path) - 1  # edges in path
     except nx.NetworkXNoPath:
@@ -189,13 +189,13 @@ def shortest_path(
 
 
 def betweenness(
-    edges: "DuckDBPyRelation",
+    edges: DuckDBPyRelation,
     source_col: str,
     target_col: str,
     *,
     node_id_col: str = "node_id",
     backend: Literal["networkx", "duckpgq"] = "networkx",
-) -> "DuckDBPyRelation":
+) -> DuckDBPyRelation:
     """Betweenness centrality for every node (broker detection).
 
     High betweenness = the employee sits on many shortest paths between
@@ -223,10 +223,10 @@ def betweenness(
         _require_duckpgq()
         raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
 
-    G = _nx_digraph(edges, source_col, target_col)
+    graph = _nx_digraph(edges, source_col, target_col)
     import networkx as nx
 
-    scores = nx.betweenness_centrality(G)
+    scores = nx.betweenness_centrality(graph)
     df = pd.DataFrame(
         [(node, float(score)) for node, score in scores.items()],
         columns=[node_id_col, "betweenness"],
@@ -235,14 +235,14 @@ def betweenness(
 
 
 def pagerank(
-    edges: "DuckDBPyRelation",
+    edges: DuckDBPyRelation,
     source_col: str,
     target_col: str,
     *,
     damping: float = 0.85,
     node_id_col: str = "node_id",
     backend: Literal["networkx", "duckpgq"] = "networkx",
-) -> "DuckDBPyRelation":
+) -> DuckDBPyRelation:
     """PageRank centrality (influence scoring).
 
     In a formal org chart the root dominates; in a collaboration network
@@ -269,10 +269,10 @@ def pagerank(
         _require_duckpgq()
         raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
 
-    G = _nx_digraph(edges, source_col, target_col)
+    graph = _nx_digraph(edges, source_col, target_col)
     import networkx as nx
 
-    scores = nx.pagerank(G, alpha=damping)
+    scores = nx.pagerank(graph, alpha=damping)
     df = pd.DataFrame(
         [(node, float(score)) for node, score in scores.items()],
         columns=[node_id_col, "pagerank"],
@@ -281,12 +281,12 @@ def pagerank(
 
 
 def connected_components(
-    edges: "DuckDBPyRelation",
+    edges: DuckDBPyRelation,
     source_col: str,
     target_col: str,
     *,
     backend: Literal["networkx", "duckpgq"] = "networkx",
-) -> "DuckDBPyRelation":
+) -> DuckDBPyRelation:
     """Weakly-connected components in the edge graph.
 
     In a healthy org chart there should be exactly 1 component. More than
@@ -316,10 +316,10 @@ def connected_components(
         _require_duckpgq()
         raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
 
-    G = _nx_digraph(edges, source_col, target_col)
+    graph = _nx_digraph(edges, source_col, target_col)
     import networkx as nx
 
-    components = list(nx.weakly_connected_components(G))
+    components = list(nx.weakly_connected_components(graph))
     # Sort by size DESC, stable so ties keep insertion order
     components.sort(key=len, reverse=True)
     rows = [(int(idx), len(members), sorted(members)) for idx, members in enumerate(components)]
@@ -328,13 +328,13 @@ def connected_components(
 
 
 def eigenvector_centrality(
-    edges: "DuckDBPyRelation",
+    edges: DuckDBPyRelation,
     source_col: str,
     target_col: str,
     *,
     node_id_col: str = "node_id",
     backend: Literal["networkx", "duckpgq"] = "networkx",
-) -> "DuckDBPyRelation":
+) -> DuckDBPyRelation:
     """Eigenvector centrality for every node.
 
     Eigenvector centrality scores a node by the centrality of its
@@ -361,22 +361,22 @@ def eigenvector_centrality(
         _require_duckpgq()
         raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
 
-    G = _nx_digraph(edges, source_col, target_col)
+    graph = _nx_digraph(edges, source_col, target_col)
     import networkx as nx
 
     try:
-        scores = nx.eigenvector_centrality(G)
+        scores = nx.eigenvector_centrality(graph)
     except nx.PowerIterationFailedConvergence:
         # For directed acyclic graphs (typical org charts) eigenvector
         # centrality is mathematically zero for non-root nodes. Return the
         # in-degree weighted fallback so callers always get a score.
-        zero_nodes = {node: 0.0 for node in G.nodes()}
-        if len(G) == 0:
+        zero_nodes = {node: 0.0 for node in graph.nodes()}
+        if len(graph) == 0:
             scores = zero_nodes
         else:
-            in_degrees = dict(G.in_degree())
+            in_degrees = dict(graph.in_degree())
             max_deg = max(in_degrees.values(), default=1) or 1
-            scores = {node: in_degrees.get(node, 0) / max_deg for node in G.nodes()}
+            scores = {node: in_degrees.get(node, 0) / max_deg for node in graph.nodes()}
 
     df = pd.DataFrame(
         [(node, float(score)) for node, score in scores.items()],
@@ -386,14 +386,14 @@ def eigenvector_centrality(
 
 
 def degree_centrality(
-    edges: "DuckDBPyRelation",
+    edges: DuckDBPyRelation,
     source_col: str,
     target_col: str,
     *,
     mode: Literal["in", "out", "total"] = "out",
     node_id_col: str = "node_id",
     backend: Literal["networkx", "duckpgq"] = "networkx",
-) -> "DuckDBPyRelation":
+) -> DuckDBPyRelation:
     """Degree centrality for every node.
 
     Normalized degree centrality is the fraction of possible nodes a
@@ -421,15 +421,15 @@ def degree_centrality(
         _require_duckpgq()
         raise NotImplementedError("DuckPGQ backend not yet implemented; use backend='networkx'")
 
-    G = _nx_digraph(edges, source_col, target_col)
+    graph = _nx_digraph(edges, source_col, target_col)
     import networkx as nx
 
     if mode == "in":
-        scores = nx.in_degree_centrality(G)
+        scores = nx.in_degree_centrality(graph)
     elif mode == "out":
-        scores = nx.out_degree_centrality(G)
+        scores = nx.out_degree_centrality(graph)
     elif mode == "total":
-        scores = nx.degree_centrality(G.to_undirected())
+        scores = nx.degree_centrality(graph.to_undirected())
     else:
         raise ValueError(f"mode must be 'in', 'out', or 'total', got {mode!r}")
 
@@ -441,7 +441,7 @@ def degree_centrality(
 
 
 def louvain_communities(
-    edges: "DuckDBPyRelation",
+    edges: DuckDBPyRelation,
     source_col: str,
     target_col: str,
     *,
@@ -449,7 +449,7 @@ def louvain_communities(
     resolution: float = 1.0,
     node_id_col: str = "node_id",
     backend: Literal["networkx", "duckpgq"] = "networkx",
-) -> "DuckDBPyRelation":
+) -> DuckDBPyRelation:
     """Louvain community detection on the edge graph.
 
     The Louvain algorithm greedily optimizes modularity to find densely
@@ -482,7 +482,7 @@ def louvain_communities(
     import networkx as nx
 
     if weight_col is None:
-        G = _nx_digraph(edges, source_col, target_col)
+        graph = _nx_digraph(edges, source_col, target_col)
     else:
         # Weighted graph: read edges with weights from the relation.
         result = edges.arrow()
@@ -491,19 +491,19 @@ def louvain_communities(
         src = result.column(source_col).to_pylist()
         tgt = result.column(target_col).to_pylist()
         wgt = result.column(weight_col).to_pylist()
-        G = nx.DiGraph()
-        for s, t, w in zip(src, tgt, wgt):
+        graph = nx.DiGraph()
+        for s, t, w in zip(src, tgt, wgt, strict=False):
             if s is None or t is None:
                 continue
             # Aggregate duplicate edges by summing weights.
-            if G.has_edge(s, t):
-                G[s][t]["weight"] = G[s][t].get("weight", 0.0) + float(w)
+            if graph.has_edge(s, t):
+                graph[s][t]["weight"] = graph[s][t].get("weight", 0.0) + float(w)
             else:
-                G.add_edge(s, t, weight=float(w))
+                graph.add_edge(s, t, weight=float(w))
 
     # Louvain operates on undirected graphs; mirror edges for directed input.
     communities = nx.community.louvain_communities(
-        G.to_undirected(), resolution=resolution, seed=42
+        graph.to_undirected(), resolution=resolution, seed=42
     )
     rows: list[tuple[Any, int]] = []
     for idx, members in enumerate(communities):

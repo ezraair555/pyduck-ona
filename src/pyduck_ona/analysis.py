@@ -34,7 +34,7 @@ import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
-    from duckdb import DuckDBPyRelation
+    from duckdb import DuckDBPyConnection, DuckDBPyRelation
     from numpy.typing import NDArray
 
 from pyduck_ona import graph as _graph
@@ -150,7 +150,7 @@ class DuckONA:
         janitor_obj: Any,
         *,
         hris_table: str = "hris",
-    ) -> "DuckONA":
+    ) -> DuckONA:
         """Create a DuckONA workspace from a live ``pyduck_janitor.DuckJanitor``.
 
         Parameters
@@ -616,8 +616,8 @@ class DuckONA:
         arrow_table = metrics_rel.arrow()
         if hasattr(arrow_table, "read_all"):
             arrow_table = arrow_table.read_all()
-        df = arrow_table.to_pandas()
-        self.con.execute(f"CREATE OR REPLACE TEMPORARY TABLE {view_name} AS SELECT * FROM df")
+        _df = arrow_table.to_pandas()
+        self.con.execute(f"CREATE OR REPLACE TEMPORARY TABLE {view_name} AS SELECT * FROM _df")
         sql = f"""
             SELECT h.*, m.* EXCLUDE ({mid})
             FROM {hris_table} h
@@ -717,20 +717,20 @@ class DuckONA:
 
         from sklearn.preprocessing import StandardScaler
 
-        X = StandardScaler().fit_transform(model_input.to_numpy(dtype=float))
+        x = StandardScaler().fit_transform(model_input.to_numpy(dtype=float))
 
         if method == "kmeans":
             from sklearn.cluster import KMeans
 
             model = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
-            labels = model.fit_predict(X)
+            labels = model.fit_predict(x)
             confidence = np.full(len(labels), np.nan)
         elif method == "gmm":
             from sklearn.mixture import GaussianMixture
 
             model = GaussianMixture(n_components=n_clusters, random_state=random_state)
-            labels = model.fit_predict(X)
-            confidence = model.predict_proba(X).max(axis=1)
+            labels = model.fit_predict(x)
+            confidence = model.predict_proba(x).max(axis=1)
         else:
             raise ValueError("method must be 'kmeans' or 'gmm'")
 
@@ -974,8 +974,8 @@ class DuckONA:
 
     @staticmethod
     def mrqap(
-        Y: NDArray[np.float64],
-        X_matrices: list[NDArray[np.float64]],
+        Y: NDArray[np.float64],  # noqa: N803 (public-API param; statistical convention)
+        X_matrices: list[NDArray[np.float64]],  # noqa: N803 (public-API param; statistical convention)
         n_permutations: int = 1000,
         *,
         method: Literal["pearson", "spearman"] = "pearson",
@@ -1023,14 +1023,14 @@ class DuckONA:
                 "or `pip install scipy`."
             ) from e
 
-        Y = np.asarray(Y, dtype=float)
-        Xs = [np.asarray(x, dtype=float) for x in X_matrices]
-        if Y.ndim != 2 or Y.shape[0] != Y.shape[1]:
+        y = np.asarray(Y, dtype=float)
+        xs = [np.asarray(x, dtype=float) for x in X_matrices]
+        if y.ndim != 2 or y.shape[0] != y.shape[1]:
             raise ValueError("Y must be a square matrix")
-        n = Y.shape[0]
-        for idx, x in enumerate(Xs):
+        n = y.shape[0]
+        for idx, x in enumerate(xs):
             if x.shape != (n, n):
-                raise ValueError(f"X matrix {idx} shape {x.shape} does not match Y shape {Y.shape}")
+                raise ValueError(f"X matrix {idx} shape {x.shape} does not match Y shape {y.shape}")
 
         def _vec_lower(arr: NDArray[np.float64]) -> NDArray[np.float64]:
             """Vectorize the strict lower triangle of a square matrix."""
@@ -1038,18 +1038,18 @@ class DuckONA:
             return arr[rows, cols]
 
         # Build design matrix with intercept.
-        X_design = np.column_stack(
-            [np.ones(_vec_lower(Xs[0]).shape[0])] + [_vec_lower(x) for x in Xs]
+        x_design = np.column_stack(
+            [np.ones(_vec_lower(xs[0]).shape[0])] + [_vec_lower(x) for x in xs]
         )
-        y_vec = _vec_lower(Y)
+        y_vec = _vec_lower(y)
 
         # OLS via normal equation.
-        XtX = X_design.T @ X_design
-        if np.linalg.cond(XtX) > 1e12:
+        xtx = x_design.T @ x_design
+        if np.linalg.cond(xtx) > 1e12:
             # Mild regularization for near-singular designs.
-            XtX += np.eye(XtX.shape[0]) * 1e-6
-        beta = np.linalg.solve(XtX, X_design.T @ y_vec)
-        y_pred = X_design @ beta
+            xtx += np.eye(xtx.shape[0]) * 1e-6
+        beta = np.linalg.solve(xtx, x_design.T @ y_vec)
+        y_pred = x_design @ beta
         ss_res = float(np.sum((y_vec - y_pred) ** 2))
         ss_tot = float(np.sum((y_vec - np.mean(y_vec)) ** 2))
         r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
@@ -1059,9 +1059,9 @@ class DuckONA:
         perm_betas = np.zeros((n_permutations, len(beta)))
         for i in range(n_permutations):
             perm = rng.permutation(n)
-            Y_perm = Y[perm, :][:, perm]
-            y_perm_vec = _vec_lower(Y_perm)
-            b_perm = np.linalg.solve(XtX, X_design.T @ y_perm_vec)
+            y_perm = y[perm, :][:, perm]
+            y_perm_vec = _vec_lower(y_perm)
+            b_perm = np.linalg.solve(xtx, x_design.T @ y_perm_vec)
             perm_betas[i, :] = b_perm
 
         # Two-tailed empirical p-values.
@@ -1070,9 +1070,9 @@ class DuckONA:
         # Correlation diagnostics for the first predictor (useful for
         # quick sanity checks in examples/tests).
         corr_result: dict[str, Any] = {}
-        if Xs:
+        if xs:
             with np.errstate(invalid="ignore"):
-                res = st.pearsonr(_vec_lower(Y), _vec_lower(Xs[0]))
+                res = st.pearsonr(_vec_lower(y), _vec_lower(xs[0]))
                 corr_result = {
                     "correlation": float(res.statistic),
                     "p_value": float(res.pvalue),

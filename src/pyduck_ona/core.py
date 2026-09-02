@@ -16,15 +16,11 @@ for DuckDB SQL and the relational API:
 """
 from __future__ import annotations
 
+import contextlib
 import re
 import uuid
-from typing import TYPE_CHECKING
 
 import duckdb
-
-if TYPE_CHECKING:
-    from duckdb import DuckDBPyRelation
-
 
 # ─── Identifier validation ──────────────────────────────────────────────────
 #
@@ -83,8 +79,8 @@ def _validate_relation(rel: duckdb.DuckDBPyRelation) -> None:
 def _validate_columns(
     rel: duckdb.DuckDBPyRelation,
     *columns: str,
-    require_non_null: "bool | list[str] | None" = None,
-    require_unique: "list[str] | None" = None,
+    require_non_null: bool | list[str] | None = None,
+    require_unique: list[str] | None = None,
 ) -> None:
     """Verify each column name exists in the relation's schema.
 
@@ -120,10 +116,7 @@ def _validate_columns(
         )
     if not require_non_null:
         return
-    if require_non_null is True:
-        null_check_cols = list(columns)
-    else:
-        null_check_cols = list(require_non_null)
+    null_check_cols = list(columns) if require_non_null is True else list(require_non_null)
     if null_check_cols:
         # Build a single COUNT(*) per column to avoid N separate queries.
         # We use the helper so this also works when the caller is on a
@@ -239,10 +232,8 @@ def _run_sql_on_default(
         if hasattr(result_arrow, "read_all"):
             result_arrow = result_arrow.read_all()
     finally:
-        try:
-            duckdb.sql(f"DROP VIEW IF EXISTS {view_name}")
-        except Exception:
-            pass  # Best-effort cleanup; view is per-connection.
+        with contextlib.suppress(Exception):
+            duckdb.sql(f"DROP VIEW IF EXISTS {view_name}")  # best-effort cleanup; view is per-connection.
 
     # Re-wrap the materialized arrow data as a fresh relation on the
     # default connection. The caller can call .df() / .arrow() / etc.
@@ -496,7 +487,6 @@ def hierarchy_wide(
     level_cols = [
         f"{level_prefix}{d}" for d in pivot_levels
     ]
-    level_cols_quoted = ", ".join(_quote_ident(c) for c in level_cols)
 
     # Inline the long-format recursive CTE directly into the PIVOT query
     # rather than calling ``hierarchy_long()`` as a sub-step. This keeps
@@ -527,7 +517,7 @@ def hierarchy_wide(
     aliased AS (
         SELECT
             {emp} AS {_quote_ident(employee_id)},
-            {', '.join(f'"{d}_lvl" AS {_quote_ident(c)}' for d, c in zip(pivot_levels, level_cols))}
+            {', '.join(f'"{d}_lvl" AS {_quote_ident(c)}' for d, c in zip(pivot_levels, level_cols, strict=False))}
         FROM pivot_step
     )
     SELECT * FROM aliased

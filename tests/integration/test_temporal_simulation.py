@@ -36,10 +36,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from pyduck_ona import DuckONATemporal
-
 
 # ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -348,7 +346,6 @@ def test_network_evolution_detects_densification() -> None:
     period_dates = sorted(hris["snapshot_date"].unique())
 
     # Add new supervisor edges in later periods to make it denser
-    rng = np.random.default_rng(seed=20260843)
     extra_supervisors = ["E_DIR1", "E_DIR2", "E_DIR3", "E_DIR4", "E_DIR5"]
     extra_employees = [f"E_IC{i:03d}" for i in range(20, 27)]
 

@@ -13,19 +13,16 @@ Run with:
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from pyduck_ona import DuckONATemporal
-
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 
 
 def _build_with_mobility(n_periods: int = 4, freq: str = "Q") -> pd.DataFrame:
     """Build HRIS with planted mobility events and growth."""
-    rng = np.random.default_rng(seed=20260827)
     # ROOT is the top, E001-E018 are direct reports, E005 and E010 are ICs
     rows = [("ROOT", None, 4, "Eng")]
     for i in range(1, 19):
@@ -225,8 +222,7 @@ class TestComposition:
 
     def test_who_left_vs_hierarchy_change(self, dt: DuckONATemporal) -> None:
         """Compose: who left → which manager lost them."""
-        diff = dt.q.node_set_diff(dt.periods[2], dt.periods[-1])
-        left_ids = set(diff["left"]["employee_id"].tolist())
+        _diff = dt.q.node_set_diff(dt.periods[2], dt.periods[-1])
         # E010 left; check edges_removed picks up the supervisor
         er = dt.q.edges_removed(dt.periods[2], dt.periods[-1]).df()
         assert "E010" in er["employee_id"].values

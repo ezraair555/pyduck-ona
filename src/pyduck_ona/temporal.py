@@ -45,9 +45,7 @@ Example
 from __future__ import annotations
 
 import re
-import uuid
-from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import duckdb
 import numpy as np
@@ -57,7 +55,6 @@ if TYPE_CHECKING:
     from duckdb import DuckDBPyRelation
 
 from pyduck_ona import graph as _graph
-from pyduck_ona import stats as _stats
 from pyduck_ona.core import hierarchy_long, hierarchy_stats
 from pyduck_ona.temporal_primitives import _QueryPrimitives
 
@@ -140,7 +137,7 @@ def _edges_for_period(
     date_col: str,
     period_label: str,
     freq: str,
-) -> "DuckDBPyRelation":
+) -> DuckDBPyRelation:
     """Return edge relation (emp, sup) for a single period snapshot."""
     freq_word = _FREQ_MAP.get(freq.upper())
     if freq_word is None:
@@ -319,10 +316,12 @@ class DuckONATemporal:
 
     @property
     def periods(self) -> list[str]:
+        """Ordered period labels produced by the loaded snapshot frequency."""
         return self._periods
 
     @property
     def freq(self) -> str:
+        """Snapshot frequency string (``'M'``, ``'Q'``, ``'Y'``) for this instance."""
         return self._freq
 
     # ── 1. compute_temporal_metrics ────────────────────────────────────────
@@ -462,7 +461,6 @@ class DuckONATemporal:
                 self.con, self._table_name, emp, sup, self._date_col, period, self._freq
             )
             df = edges.df()
-            n_emp = df[emp].nunique() + df[sup].nunique()  # nodes appearing in edges
             # Also count from the snapshot to get total employees
             snap_df = self.con.sql(f"""
                 SELECT DISTINCT {_quote(emp)} AS e FROM {self._table_name}
@@ -481,16 +479,16 @@ class DuckONATemporal:
                 continue
 
             # Build NetworkX graph
-            pairs = [(s, t) for s, t in zip(df[emp], df[sup]) if pd.notna(s) and pd.notna(t)]
-            G = nx.DiGraph()
-            G.add_edges_from(pairs)
+            pairs = [(s, t) for s, t in zip(df[emp], df[sup], strict=False) if pd.notna(s) and pd.notna(t)]
+            graph = nx.DiGraph()
+            graph.add_edges_from(pairs)
 
-            n_nodes = G.number_of_nodes()
+            n_nodes = graph.number_of_nodes()
             max_possible = n_nodes * (n_nodes - 1) if n_nodes > 1 else 1
-            density = nx.density(G) if max_possible > 0 else 0.0
+            density = nx.density(graph) if max_possible > 0 else 0.0
 
             # Freeman centralization (out-degree)
-            degrees = dict(G.out_degree())
+            degrees = dict(graph.out_degree())
             max_deg = max(degrees.values()) if degrees else 0
             if max_deg > 0 and n_nodes > 1:
                 centralization = sum(max_deg - d for d in degrees.values()) / (
@@ -499,12 +497,12 @@ class DuckONATemporal:
             else:
                 centralization = 0.0
 
-            n_comp = nx.number_weakly_connected_components(G)
+            n_comp = nx.number_weakly_connected_components(graph)
 
             # Avg shortest path (on undirected, largest component)
             try:
-                largest_cc = max(nx.weakly_connected_components(G), key=len)
-                sub = G.subgraph(largest_cc).to_undirected()
+                largest_cc = max(nx.weakly_connected_components(graph), key=len)
+                sub = graph.subgraph(largest_cc).to_undirected()
                 avg_pl = nx.average_shortest_path_length(sub) if sub.number_of_nodes() > 1 else 0.0
             except Exception:
                 avg_pl = np.nan
@@ -755,11 +753,11 @@ class DuckONATemporal:
                 curr_dept = curr.get("department")
 
                 # Coerce NaN→None for safe comparison (avoids pd.NA ambiguity)
-                def _clean(v):
+                def _clean(v, _pd=pd):
                     if v is None:
                         return None
                     try:
-                        if pd.isna(v):
+                        if _pd.isna(v):
                             return None
                     except (TypeError, ValueError):
                         pass
@@ -1286,10 +1284,9 @@ class DuckONATemporal:
             if len(valid_eng) >= 2:
                 xs = np.array([v[0] for v in valid_eng], dtype=float)
                 ys = np.array([v[1] for v in valid_eng], dtype=float)
-                if xs.std() > 0:
-                    engagement_trend = float(np.polyfit(xs, ys, 1)[0])
-                else:
-                    engagement_trend = 0.0
+                engagement_trend = (
+                    float(np.polyfit(xs, ys, 1)[0]) if xs.std() > 0 else 0.0
+                )
             elif len(valid_eng) == 1:
                 engagement_trend = 0.0
             else:
@@ -1491,15 +1488,15 @@ class DuckONATemporal:
 
         states = sorted(set(matrix["from_state"]).union(set(matrix["to_state"])))
         state_to_idx = {s: i for i, s in enumerate(states)}
-        P = np.zeros((len(states), len(states)), dtype=float)
+        trans_matrix = np.zeros((len(states), len(states)), dtype=float)
         for _, row in matrix.iterrows():
-            P[state_to_idx[row["from_state"]], state_to_idx[row["to_state"]]] = float(
+            trans_matrix[state_to_idx[row["from_state"]], state_to_idx[row["to_state"]]] = float(
                 row["probability"]
             )
-        for i in range(P.shape[0]):
-            row_sum = P[i].sum()
+        for i in range(trans_matrix.shape[0]):
+            row_sum = trans_matrix[i].sum()
             if row_sum == 0:
-                P[i, i] = 1.0
+                trans_matrix[i, i] = 1.0
 
         if current_state not in state_to_idx:
             return pd.DataFrame(
@@ -1511,7 +1508,7 @@ class DuckONATemporal:
 
         rows: list[dict[str, Any]] = []
         for step in range(1, horizon + 1):
-            dist = dist @ P
+            dist = dist @ trans_matrix
             best_idx = int(np.argmax(dist))
             for idx, state in enumerate(states):
                 rows.append(
@@ -1704,7 +1701,7 @@ class DuckONATemporal:
 
     # ── Utility ─────────────────────────────────────────────────────────────
 
-    def sql(self, query: str) -> "DuckDBPyRelation":
+    def sql(self, query: str) -> DuckDBPyRelation:
         """Run arbitrary SQL on the owned connection."""
         return self.con.sql(query)
 

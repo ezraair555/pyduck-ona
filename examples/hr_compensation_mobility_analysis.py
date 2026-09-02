@@ -290,7 +290,7 @@ def main() -> None:
     # Temporal slice comparison: pre/post promotion
     slices = ona.build_temporal_slices("attendance", "date", freq="W")
     print(f"\n[Temporal] {len(slices)} weekly attendance slices")
-    for label, start, end, rel in slices[:3]:
+    for label, _start, _end, rel in slices[:3]:
         print(f"  {label}: {rel.count('*').fetchone()[0]} rows")
 
     # Promoted vs non-promoted salary comparison
@@ -306,8 +306,7 @@ def main() -> None:
     # matrix and regress it on the inverse of the org-chart distance matrix.
     emp_ids = sorted(hris["employee_id"].tolist())
     n = len(emp_ids)
-    idx = {e: i for i, e in enumerate(emp_ids)}
-    dept = dict(zip(hris["employee_id"], hris["department"]))
+    dept = dict(zip(hris["employee_id"], hris["department"], strict=False))
 
     dept_sim = np.zeros((n, n))
     for i, e1 in enumerate(emp_ids):
@@ -315,7 +314,7 @@ def main() -> None:
             dept_sim[i, j] = 1.0 if dept[e1] == dept[e2] else 0.0
 
     # Manager distance: 1 if direct report to same manager, decayed by level difference.
-    mgr = dict(zip(hris["employee_id"], hris["supervisor_id"]))
+    mgr = dict(zip(hris["employee_id"], hris["supervisor_id"], strict=False))
     mgr_dist = np.zeros((n, n))
     for i, e1 in enumerate(emp_ids):
         for j, e2 in enumerate(emp_ids):

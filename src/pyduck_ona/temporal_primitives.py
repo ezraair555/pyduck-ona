@@ -39,27 +39,29 @@ if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 from pyduck_ona import graph as _graph
-from pyduck_ona.core import hierarchy_long, hierarchy_stats
+from pyduck_ona.core import hierarchy_stats
 
+_FREQ_WORD_MAP = {"M": "month", "Q": "quarter", "Y": "year"}
 
 # ─── Internal helpers ──────────────────────────────────────────────────────
 
 
 def _period_edges(
-    con: "DuckDBPyConnection",
+    con: DuckDBPyConnection,
     table: str,
     emp_col: str,
     sup_col: str,
     date_col: str,
     period: str,
-) -> "DuckDBPyRelation":
+    freq_word: str = "month",
+) -> DuckDBPyRelation:
     """Return the edge relation for a single period."""
     return con.sql(f"""
         SELECT DISTINCT
             "{emp_col}" AS "{emp_col}",
             "{sup_col}" AS "{sup_col}"
         FROM {table}
-        WHERE date_trunc('month', CAST("{date_col}" AS DATE))
+        WHERE date_trunc('{freq_word}', CAST("{date_col}" AS DATE))
               = CAST('{period}' AS DATE)
           AND "{sup_col}" IS NOT NULL
           AND CAST("{sup_col}" AS VARCHAR) <> ''
@@ -67,20 +69,21 @@ def _period_edges(
 
 
 def _period_employees(
-    con: "DuckDBPyConnection",
+    con: DuckDBPyConnection,
     table: str,
     emp_col: str,
     date_col: str,
     period: str,
     extra_cols: list[str] | None = None,
-) -> "DuckDBPyRelation":
+    freq_word: str = "month",
+) -> DuckDBPyRelation:
     """Return employees present in a single period, with optional extra cols."""
     cols = [emp_col] + (extra_cols or [])
     col_list = ", ".join(f'"{c}"' for c in cols)
     return con.sql(f"""
         SELECT DISTINCT {col_list}
         FROM {table}
-        WHERE date_trunc('month', CAST("{date_col}" AS DATE))
+        WHERE date_trunc('{freq_word}', CAST("{date_col}" AS DATE))
               = CAST('{period}' AS DATE)
     """)
 
@@ -106,13 +109,14 @@ def _metric_value_column(df: pd.DataFrame) -> tuple[str, str]:
 
 
 def _compute_metric_for_period(
-    con: "DuckDBPyConnection",
+    con: DuckDBPyConnection,
     table: str,
     emp_col: str,
     sup_col: str,
     date_col: str,
     period: str,
     metric: str,
+    freq_word: str = "month",
 ) -> pd.DataFrame:
     """Compute one metric for one period, return DataFrame with id + value."""
     edges = _period_edges(con, table, emp_col, sup_col, date_col, period)
@@ -130,7 +134,7 @@ def _compute_metric_for_period(
             con.sql(f"""
                 SELECT "{emp_col}" AS employee_id, "{sup_col}" AS supervisor_id
                 FROM {table}
-                WHERE date_trunc('month', CAST("{date_col}" AS DATE))
+                WHERE date_trunc('{freq_word}', CAST("{date_col}" AS DATE))
                       = CAST('{period}' AS DATE)
             """),
             "employee_id", "supervisor_id",
@@ -149,6 +153,7 @@ class _QueryPrimitives:
 
     def __init__(self, parent: Any) -> None:
         self._p = parent  # the DuckONATemporal instance
+        self._freq_word = _FREQ_WORD_MAP.get(getattr(parent, "freq", "M"), "month")
 
     # ── 1. Trajectory primitives ──────────────────────────────────────────
 
@@ -177,6 +182,7 @@ class _QueryPrimitives:
             df = _compute_metric_for_period(
                 p.con, p._table_name, p._emp_col, p._sup_col, p._date_col,
                 period, metric,
+            freq_word=self._freq_word,
             )
             if df.empty:
                 rows.append({"period": period, "value": np.nan,
@@ -220,11 +226,13 @@ class _QueryPrimitives:
         df_t = _compute_metric_for_period(
             p.con, p._table_name, p._emp_col, p._sup_col, p._date_col,
             period_t, metric,
-        )
+        freq_word=self._freq_word,
+            )
         df_t1 = _compute_metric_for_period(
             p.con, p._table_name, p._emp_col, p._sup_col, p._date_col,
             period_t1, metric,
-        )
+        freq_word=self._freq_word,
+            )
         v_t = float(df_t[df_t["employee_id"] == employee_id].iloc[0][metric]) \
             if not df_t.empty and (df_t["employee_id"] == employee_id).any() else np.nan
         v_t1 = float(df_t1[df_t1["employee_id"] == employee_id].iloc[0][metric]) \
@@ -266,6 +274,7 @@ class _QueryPrimitives:
             df = _compute_metric_for_period(
                 p.con, p._table_name, p._emp_col, p._sup_col, p._date_col,
                 period, metric,
+            freq_word=self._freq_word,
             )
             if df.empty:
                 continue
@@ -304,7 +313,8 @@ class _QueryPrimitives:
         df = _compute_metric_for_period(
             p.con, p._table_name, p._emp_col, p._sup_col, p._date_col,
             period, metric,
-        )
+        freq_word=self._freq_word,
+            )
         if df.empty:
             return pd.DataFrame(columns=["rank", "employee_id", "value"])
         df = df.sort_values(metric, ascending=False).head(top_n).reset_index(drop=True)
@@ -318,7 +328,7 @@ class _QueryPrimitives:
         self,
         period_t: str,
         period_t1: str,
-    ) -> "DuckDBPyRelation":
+    ) -> DuckDBPyRelation:
         """New supervisor edges between two snapshots.
 
         Returns
@@ -335,13 +345,13 @@ class _QueryPrimitives:
             FROM (
                 SELECT "{p._emp_col}", "{p._sup_col}"
                 FROM {p._table_name}
-                WHERE date_trunc('month', CAST("{p._date_col}" AS DATE))
+                WHERE date_trunc('{self._freq_word}', CAST("{p._date_col}" AS DATE))
                       = CAST('{period_t1}' AS DATE)
             ) t1
             LEFT JOIN (
                 SELECT "{p._emp_col}", "{p._sup_col}"
                 FROM {p._table_name}
-                WHERE date_trunc('month', CAST("{p._date_col}" AS DATE))
+                WHERE date_trunc('{self._freq_word}', CAST("{p._date_col}" AS DATE))
                       = CAST('{period_t}' AS DATE)
             ) t0
               ON t1."{p._emp_col}" = t0."{p._emp_col}"
@@ -353,7 +363,7 @@ class _QueryPrimitives:
         self,
         period_t: str,
         period_t1: str,
-    ) -> "DuckDBPyRelation":
+    ) -> DuckDBPyRelation:
         """Edges present at t but missing at t1 (departures or reorgs).
 
         Returns
@@ -370,13 +380,13 @@ class _QueryPrimitives:
             FROM (
                 SELECT "{p._emp_col}", "{p._sup_col}"
                 FROM {p._table_name}
-                WHERE date_trunc('month', CAST("{p._date_col}" AS DATE))
+                WHERE date_trunc('{self._freq_word}', CAST("{p._date_col}" AS DATE))
                       = CAST('{period_t}' AS DATE)
             ) t0
             LEFT JOIN (
                 SELECT "{p._emp_col}", "{p._sup_col}"
                 FROM {p._table_name}
-                WHERE date_trunc('month', CAST("{p._date_col}" AS DATE))
+                WHERE date_trunc('{self._freq_word}', CAST("{p._date_col}" AS DATE))
                       = CAST('{period_t1}' AS DATE)
             ) t1
               ON t0."{p._emp_col}" = t1."{p._emp_col}"
@@ -399,8 +409,8 @@ class _QueryPrimitives:
         p = self._p
         if not p._loaded:
             raise RuntimeError("call load_snapshots() first")
-        emp_t = _period_employees(p.con, p._table_name, p._emp_col, p._date_col, period_t).df()
-        emp_t1 = _period_employees(p.con, p._table_name, p._emp_col, p._date_col, period_t1).df()
+        emp_t = _period_employees(p.con, p._table_name, p._emp_col, p._date_col, period_t, freq_word=self._freq_word).df()
+        emp_t1 = _period_employees(p.con, p._table_name, p._emp_col, p._date_col, period_t1, freq_word=self._freq_word).df()
         set_t = set(emp_t[p._emp_col].tolist())
         set_t1 = set(emp_t1[p._emp_col].tolist())
         joined_ids = set_t1 - set_t
@@ -428,13 +438,13 @@ class _QueryPrimitives:
         snap_t = p.con.sql(f"""
             SELECT "{p._emp_col}" AS employee_id, "{p._sup_col}" AS supervisor_id
             FROM {p._table_name}
-            WHERE date_trunc('month', CAST("{p._date_col}" AS DATE))
+            WHERE date_trunc('{self._freq_word}', CAST("{p._date_col}" AS DATE))
                   = CAST('{period_t}' AS DATE)
         """)
         snap_t1 = p.con.sql(f"""
             SELECT "{p._emp_col}" AS employee_id, "{p._sup_col}" AS supervisor_id
             FROM {p._table_name}
-            WHERE date_trunc('month', CAST("{p._date_col}" AS DATE))
+            WHERE date_trunc('{self._freq_word}', CAST("{p._date_col}" AS DATE))
                   = CAST('{period_t1}' AS DATE)
         """)
         s_t = hierarchy_stats(snap_t, "employee_id", "supervisor_id").df()
@@ -462,7 +472,7 @@ class _QueryPrimitives:
         self,
         manager_id: Any,
         period: str | None = None,
-    ) -> "DuckDBPyRelation":
+    ) -> DuckDBPyRelation:
         """All transitive descendants of a manager at a period.
 
         Parameters
@@ -488,7 +498,7 @@ class _QueryPrimitives:
             CREATE OR REPLACE TEMP TABLE {tbl} AS
             SELECT "{p._emp_col}" AS employee_id, "{p._sup_col}" AS supervisor_id
             FROM {p._table_name}
-            WHERE date_trunc('month', CAST("{p._date_col}" AS DATE))
+            WHERE date_trunc('{self._freq_word}', CAST("{p._date_col}" AS DATE))
                   = CAST('{period}' AS DATE)
         """)
         emp = "employee_id"
@@ -606,11 +616,13 @@ class _QueryPrimitives:
         df_t = _compute_metric_for_period(
             p.con, p._table_name, p._emp_col, p._sup_col, p._date_col,
             period_t, metric,
-        )
+        freq_word=self._freq_word,
+            )
         df_t1 = _compute_metric_for_period(
             p.con, p._table_name, p._emp_col, p._sup_col, p._date_col,
             period_t1, metric,
-        )
+        freq_word=self._freq_word,
+            )
         merged = df_t.merge(df_t1, on="employee_id", how="outer", suffixes=("_t", "_t1"))
         merged = merged.rename(columns={
             f"{metric}_t": "value_t",
@@ -696,13 +708,13 @@ class _QueryPrimitives:
         # Pull the cohort at each period
         sql_t = f"""
             SELECT * FROM {p._table_name}
-            WHERE date_trunc('month', CAST("{p._date_col}" AS DATE))
+            WHERE date_trunc('{self._freq_word}', CAST("{p._date_col}" AS DATE))
                   = CAST('{period_t}' AS DATE)
               AND ({cohort_filter})
         """
         sql_t1 = f"""
             SELECT * FROM {p._table_name}
-            WHERE date_trunc('month', CAST("{p._date_col}" AS DATE))
+            WHERE date_trunc('{self._freq_word}', CAST("{p._date_col}" AS DATE))
                   = CAST('{period_t1}' AS DATE)
               AND ({cohort_filter})
         """
@@ -713,7 +725,8 @@ class _QueryPrimitives:
         df_t = _compute_metric_for_period(
             p.con, "_cohort_t", p._emp_col, p._sup_col, p._date_col,
             period_t, metric,
-        )
+        freq_word=self._freq_word,
+            )
         df_t1 = _compute_metric_for_period(
             p.con, "_cohort_t1", p._emp_col, p._sup_col, p._date_col,
             period_t1, metric,
@@ -758,6 +771,7 @@ class _QueryPrimitives:
             df = _compute_metric_for_period(
                 p.con, p._table_name, p._emp_col, p._sup_col, p._date_col,
                 period, metric,
+            freq_word=self._freq_word,
             )
             if df.empty:
                 rows.append({"period": period, "mean_value": np.nan, "n_employees": 0})
@@ -856,6 +870,7 @@ class _QueryPrimitives:
             df = _compute_metric_for_period(
                 p.con, p._table_name, p._emp_col, p._sup_col, p._date_col,
                 period, metric,
+            freq_word=self._freq_word,
             )
             if df.empty:
                 rows.append({"period": period, "value": np.nan, "rank": np.nan, "n_total": 0})
@@ -894,6 +909,7 @@ class _QueryPrimitives:
             df = _compute_metric_for_period(
                 p.con, p._table_name, p._emp_col, p._sup_col, p._date_col,
                 period, metric,
+            freq_word=self._freq_word,
             )
             if df.empty:
                 continue

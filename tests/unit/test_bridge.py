@@ -5,26 +5,25 @@ import pytest
 
 from pyduck_ona.bridge import to_igraph, to_networkx
 
-
 # ─── to_networkx ────────────────────────────────────────────────────────────
 
 class TestToNetworkX:
     def test_basic_digraph(self, simple_org):
         from pyduck_ona.core import hierarchy_long
         long_rel = hierarchy_long(simple_org, "employee_id", "supervisor_id")
-        G = to_networkx(long_rel, "employee_id", "supervisor_id", graph_type="DiGraph")
+        graph = to_networkx(long_rel, "employee_id", "supervisor_id", graph_type="DiGraph")
         # long format: 14 ancestor-pair edges across the 6 non-root employees
         # (E010×1, E100×2, E101×2, E1000×3, E1001×3, E1010×3)
-        assert G.number_of_edges() == 14
+        assert graph.number_of_edges() == 14
         # 7 distinct employees
-        assert G.number_of_nodes() == 7
-        assert G.is_directed()
+        assert graph.number_of_nodes() == 7
+        assert graph.is_directed()
 
     def test_undirected(self, simple_org):
         from pyduck_ona.core import hierarchy_long
         long_rel = hierarchy_long(simple_org, "employee_id", "supervisor_id")
-        G = to_networkx(long_rel, "employee_id", "supervisor_id", graph_type="Graph")
-        assert not G.is_directed()
+        graph = to_networkx(long_rel, "employee_id", "supervisor_id", graph_type="Graph")
+        assert not graph.is_directed()
 
     def test_invalid_graph_type(self, simple_org):
         from pyduck_ona.core import hierarchy_long

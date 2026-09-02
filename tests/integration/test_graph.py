@@ -24,7 +24,6 @@ from pyduck_ona.graph import (
     shortest_path,
 )
 
-
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _direct_edges(simple_org):
@@ -82,7 +81,7 @@ class TestShortestPath:
         assert pd.isna(result.iloc[0]["path_length"])
         assert result.iloc[0]["path"] == ""
 
-    def test_returns_relation_not_dataFrame(self, simple_org):
+    def test_returns_relation_not_dataframe(self, simple_org):
         long = hierarchy_long(simple_org, "employee_id", "supervisor_id")
         result = shortest_path(long, "employee_id", "supervisor_id",
                                 source="E001", target="E1000")
@@ -186,7 +185,7 @@ class TestConnectedComponents:
 
     def test_disconnected_org_has_multiple_components(self):
         """Two disconnected sub-trees should yield two components."""
-        rel = duckdb.sql("""
+        _rel = duckdb.sql("""
             SELECT * FROM (VALUES
                 ('A1', CAST(NULL AS VARCHAR)),
                 ('A2', 'A1'),
@@ -196,7 +195,7 @@ class TestConnectedComponents:
         """)
         direct = duckdb.sql(
             "SELECT employee_id, supervisor_id "
-            "FROM rel WHERE supervisor_id IS NOT NULL"
+            "FROM _rel WHERE supervisor_id IS NOT NULL"
         )
         result = connected_components(direct, "employee_id", "supervisor_id").df()
         assert len(result) == 2

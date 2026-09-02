@@ -8,15 +8,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import duckdb
-
 if TYPE_CHECKING:
-    from duckdb import DuckDBPyRelation
-    import networkx as nx
     import igraph as ig
+    import networkx as nx
+    from duckdb import DuckDBPyRelation
 
 
-def _to_arrow_table(rel: "DuckDBPyRelation"):
+def _to_arrow_table(rel: DuckDBPyRelation):
     """Materialize a DuckDB relation into a pyarrow.Table.
 
     DuckDB >=1.3 returns a streaming ``RecordBatchReader`` from
@@ -34,14 +32,14 @@ def _to_arrow_table(rel: "DuckDBPyRelation"):
 
 
 def to_networkx(
-    edges: "DuckDBPyRelation",
+    edges: DuckDBPyRelation,
     source_col: str,
     target_col: str,
     weight_col: str | None = None,
     graph_type: str = "DiGraph",
-    node_attrs: "DuckDBPyRelation | None" = None,
+    node_attrs: DuckDBPyRelation | None = None,
     node_id_col: str = "node_id",
-) -> "nx.Graph | nx.DiGraph":
+) -> nx.Graph | nx.DiGraph:
     """Convert an edge relation into a NetworkX graph via Arrow.
 
     Parameters
@@ -82,9 +80,9 @@ def to_networkx(
     import networkx as nx
 
     if graph_type == "DiGraph":
-        G = nx.DiGraph()
+        graph = nx.DiGraph()
     elif graph_type == "Graph":
-        G = nx.Graph()
+        graph = nx.Graph()
     else:
         raise ValueError(f"graph_type must be 'Graph' or 'DiGraph', got {graph_type!r}")
 
@@ -97,12 +95,12 @@ def to_networkx(
     )
 
     if weight_data is not None:
-        for s, t, w in zip(src_data, tgt_data, weight_data):
-            G.add_edge(s, t, weight=w)
+        for s, t, w in zip(src_data, tgt_data, weight_data, strict=False):
+            graph.add_edge(s, t, weight=w)
     else:
         # NetworkX's add_edges_from is the fastest path for unweighted
-        edge_list = list(zip(src_data, tgt_data))
-        G.add_edges_from(edge_list)
+        edge_list = list(zip(src_data, tgt_data, strict=False))
+        graph.add_edges_from(edge_list)
 
     # ── Optional node attributes ──
     if node_attrs is not None:
@@ -115,26 +113,26 @@ def to_networkx(
             )
         ids = attr_table.column(node_id_col).to_pylist()
         for idx, nid in enumerate(ids):
-            if nid not in G:
-                G.add_node(nid)
+            if nid not in graph:
+                graph.add_node(nid)
             for col in cols:
                 if col == node_id_col:
                     continue
                 val = attr_table.column(col)[idx].as_py()
-                G.nodes[nid][col] = val
+                graph.nodes[nid][col] = val
 
-    return G
+    return graph
 
 
 def to_igraph(
-    edges: "DuckDBPyRelation",
+    edges: DuckDBPyRelation,
     source_col: str,
     target_col: str,
     weight_col: str | None = None,
     directed: bool = True,
-    node_attrs: "DuckDBPyRelation | None" = None,
+    node_attrs: DuckDBPyRelation | None = None,
     node_id_col: str = "node_id",
-) -> "ig.Graph":
+) -> ig.Graph:
     """Convert an edge relation into an igraph.Graph via Arrow.
 
     igraph is preferred over NetworkX for:
@@ -154,7 +152,7 @@ def to_igraph(
     nodes = sorted(set(src_data) | set(tgt_data))
     node_index = {n: i for i, n in enumerate(nodes)}
 
-    edge_list = [(node_index[s], node_index[t]) for s, t in zip(src_data, tgt_data)]
+    edge_list = [(node_index[s], node_index[t]) for s, t in zip(src_data, tgt_data, strict=False)]
 
     g = ig.Graph(n=len(nodes), edges=edge_list, directed=directed)
     g.vs["name"] = nodes

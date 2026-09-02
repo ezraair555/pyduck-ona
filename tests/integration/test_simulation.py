@@ -42,13 +42,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import duckdb
 import numpy as np
 import pandas as pd
 import pytest
 
 import pyduck_ona as pona
-
 
 ARTIFACTS = Path(__file__).parent.parent / "_artifacts"
 ARTIFACTS.mkdir(exist_ok=True)
@@ -71,10 +69,7 @@ def _assert_within(
     The absolute floor protects against false-pass when the true
     coefficient is near zero (where relative tolerance is meaningless).
     """
-    if truth == 0:
-        tol = abs_floor
-    else:
-        tol = max(rel_tol * abs(truth), abs_floor)
+    tol = abs_floor if truth == 0 else max(rel_tol * abs(truth), abs_floor)
     diff = abs(recovered - truth)
     assert diff <= tol, (
         f"{label}: recovered={recovered:.4f}, truth={truth:.4f}, "
@@ -136,7 +131,7 @@ def test_ols_salary_recovers_true_coefficients() -> None:
     org = _build_synthetic_org(n_per_level=(1, 5, 25, 200), rng=rng)
 
     # True coefficients
-    B0, B_LEVEL, B_TENURE, B_GENDER = 50_000.0, 25_000.0, 1_500.0, 5_000.0
+    b0, b_level, b_tenure, b_gender = 50_000.0, 25_000.0, 1_500.0, 5_000.0
 
     df = org.copy()
     # Employee-level covariates
@@ -147,10 +142,10 @@ def test_ols_salary_recovers_true_coefficients() -> None:
     # Salary from DGP + noise
     noise = rng.normal(0, 10_000, size=len(df))
     df["salary"] = (
-        B0
-        + B_LEVEL * df["job_level"]
-        + B_TENURE * df["tenure_yrs"]
-        + B_GENDER * (df["gender"] == "M").astype(int)
+        b0
+        + b_level * df["job_level"]
+        + b_tenure * df["tenure_yrs"]
+        + b_gender * (df["gender"] == "M").astype(int)
         + noise
     )
 
@@ -185,11 +180,11 @@ def test_ols_salary_recovers_true_coefficients() -> None:
 
     # Asserts — generous tolerances for n=231 with ONA endogeneity in
     # the join (not in the model itself, but the join changes row counts).
-    _assert_within(rec_level, B_LEVEL, rel_tol=0.10, abs_floor=1_500, label="beta_level")
-    _assert_within(rec_tenure, B_TENURE, rel_tol=0.35, abs_floor=300, label="beta_tenure")
-    _assert_within(rec_gender, B_GENDER, rel_tol=0.40, abs_floor=2_500, label="beta_gender")
+    _assert_within(rec_level, b_level, rel_tol=0.10, abs_floor=1_500, label="beta_level")
+    _assert_within(rec_tenure, b_tenure, rel_tol=0.35, abs_floor=300, label="beta_tenure")
+    _assert_within(rec_gender, b_gender, rel_tol=0.40, abs_floor=2_500, label="beta_gender")
     # Intercept is harder because the centering of job_level/tenure shifts it.
-    _assert_within(rec_intercept, B0, rel_tol=0.50, abs_floor=20_000, label="beta_intercept")
+    _assert_within(rec_intercept, b0, rel_tol=0.50, abs_floor=20_000, label="beta_intercept")
 
     # Glance should report reasonable R² for a clean DGP.
     assert "rsquared" in glance.columns, (
@@ -221,7 +216,7 @@ def test_logistic_attrition_recovers_true_coefficients() -> None:
     rng = np.random.default_rng(seed=20260828)
     org = _build_synthetic_org(n_per_level=(1, 5, 25, 250), rng=rng)
 
-    A, B_TENURE, B_ENG, B_TEAM = 1.5, -0.30, -0.45, 0.04
+    a, b_tenure, b_eng, b_team = 1.5, -0.30, -0.45, 0.04
 
     df = org.copy()
     df["tenure_yrs"] = np.clip(rng.gamma(2.0, 2.0, size=len(df)), 0, 20)
@@ -241,11 +236,11 @@ def test_logistic_attrition_recovers_true_coefficients() -> None:
     stats_df = stats_rel.df()
     # team_size includes the manager; total_reports is the number of reports.
     # Use total_reports as the team_size predictor (i.e. manager team load).
-    team_size_map = dict(zip(stats_df["manager_id"], stats_df["total_reports"]))
+    team_size_map = dict(zip(stats_df["manager_id"], stats_df["total_reports"], strict=False))
     df["team_size"] = df["employee_id"].map(team_size_map).fillna(0).astype(int)
 
     # Generate attrition from DGP
-    logit = A + B_TENURE * df["tenure_yrs"] + B_ENG * df["engagement"] + B_TEAM * df["team_size"]
+    logit = a + b_tenure * df["tenure_yrs"] + b_eng * df["engagement"] + b_team * df["team_size"]
     p_attrition = 1.0 / (1.0 + np.exp(-logit))
     df["attrition"] = (rng.random(len(df)) < p_attrition).astype(int)
 
@@ -283,9 +278,9 @@ def test_logistic_attrition_recovers_true_coefficients() -> None:
 
     # Logistic coefficient recovery has more variance than OLS, especially
     # when team_size has a long-tailed distribution. Generous tolerances.
-    _assert_within(rec_tenure, B_TENURE, rel_tol=0.35, abs_floor=0.15, label="beta_tenure")
-    _assert_within(rec_eng, B_ENG, rel_tol=0.35, abs_floor=0.15, label="beta_engagement")
-    _assert_within(rec_team, B_TEAM, rel_tol=0.50, abs_floor=0.05, label="beta_team_size")
+    _assert_within(rec_tenure, b_tenure, rel_tol=0.35, abs_floor=0.15, label="beta_tenure")
+    _assert_within(rec_eng, b_eng, rel_tol=0.35, abs_floor=0.15, label="beta_engagement")
+    _assert_within(rec_team, b_team, rel_tol=0.50, abs_floor=0.05, label="beta_team_size")
 
     # Sign check — the qualitative finding should hold even if magnitude is off
     assert rec_tenure < 0, f"expected negative tenure effect, got {rec_tenure:.3f}"
@@ -317,19 +312,19 @@ def test_mrqap_recovers_matrix_relationship() -> None:
 
     # Department assignment: 5 departments, 6 employees each
     depts = np.repeat(np.arange(5), 6)
-    D = (depts[:, None] == depts[None, :]).astype(float)  # n x n same-department indicator
-    np.fill_diagonal(D, 0.0)
+    d_mat = (depts[:, None] == depts[None, :]).astype(float)  # n x n same-department indicator
+    np.fill_diagonal(d_mat, 0.0)
 
     # Noise matrix: small random similarities
-    N = rng.uniform(0, 0.3, size=(n, n))
-    N = (N + N.T) / 2  # symmetrize
-    np.fill_diagonal(N, 0.0)
+    n_mat = rng.uniform(0, 0.3, size=(n, n))
+    n_mat = (n_mat + n_mat.T) / 2  # symmetrize
+    np.fill_diagonal(n_mat, 0.0)
 
-    C = true_alpha * D + N
-    C = (C + C.T) / 2  # symmetrize
-    np.fill_diagonal(C, 0.0)
+    c_mat = true_alpha * d_mat + n_mat
+    c_mat = (c_mat + c_mat.T) / 2  # symmetrize
+    np.fill_diagonal(c_mat, 0.0)
 
-    result = pona.DuckONA.mrqap(C, [D], n_permutations=500)
+    result = pona.DuckONA.mrqap(c_mat, [d_mat], n_permutations=500)
 
     # Coefficients layout: [intercept, β_D]
     coefs = result["coefficients"]

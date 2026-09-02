@@ -53,8 +53,8 @@ def main() -> None:
 
     # ── 4. Build ONA graph ───────────────────────────────────────────────
     long_rel = pona.hierarchy_long(rel, "employee_id", "supervisor_id")
-    G = pona.to_networkx(long_rel, "employee_id", "supervisor_id")
-    print(f"\nGraph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+    graph = pona.to_networkx(long_rel, "employee_id", "supervisor_id")
+    print(f"\nGraph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges")
 
     # ── 5. Graph algorithms ──────────────────────────────────────────────
     # For meaningful betweenness/pagerank, use the *direct* edge
@@ -70,17 +70,17 @@ def main() -> None:
         direct, "employee_id", "supervisor_id",
         source="E1000", target="E001",
     ).df()
-    print(f"\nReporting chain E1000 → E001:")
+    print("\nReporting chain E1000 → E001:")
     print(path.to_string(index=False))
 
     # Broker detection
     brokers = pona.betweenness(direct, "employee_id", "supervisor_id").df()
-    print(f"\nTop 5 brokers (betweenness centrality):")
+    print("\nTop 5 brokers (betweenness centrality):")
     print(brokers.head(5).to_string(index=False))
 
     # Influence
     influence = pona.pagerank(direct, "employee_id", "supervisor_id").df()
-    print(f"\nTop 5 most-influential (PageRank):")
+    print("\nTop 5 most-influential (PageRank):")
     print(influence.head(5).to_string(index=False))
 
     # Organizational silos

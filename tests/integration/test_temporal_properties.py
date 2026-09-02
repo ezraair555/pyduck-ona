@@ -18,16 +18,12 @@ Run with:
 
 from __future__ import annotations
 
-import datetime as dt
-import string
-
 import numpy as np
 import pandas as pd
-import pytest
-from hypothesis import HealthCheck, assume, given, settings, strategies as st
+from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import strategies as st
 
 from pyduck_ona import DuckONATemporal
-
 
 # ─── Strategies ────────────────────────────────────────────────────────────
 
@@ -53,10 +49,7 @@ def hris_snapshots(draw, min_periods: int = 1, max_periods: int = 5, max_employe
         for emp_idx, emp in enumerate(emp_ids):
             if draw(st.booleans()) or p_idx == 0:  # employee present in period
                 # supervisor = previous employee (chain), or None for first
-                if emp_idx == 0:
-                    sup = None
-                else:
-                    sup = emp_ids[emp_idx - 1]
+                sup = None if emp_idx == 0 else emp_ids[emp_idx - 1]
                 rows.append({
                     "employee_id": emp,
                     "supervisor_id": sup,
@@ -174,9 +167,9 @@ class TestProperties:
         assert "employee_id" in added.columns
         assert "employee_id" in removed.columns
         if not added.empty and not removed.empty and "supervisor_id" in added.columns:
-            added_set = set(zip(added["employee_id"], added["supervisor_id"]))
+            added_set = set(zip(added["employee_id"], added["supervisor_id"], strict=False))
             if "supervisor_id_at_t" in removed.columns:
-                removed_set = set(zip(removed["employee_id"], removed["supervisor_id_at_t"]))
+                removed_set = set(zip(removed["employee_id"], removed["supervisor_id_at_t"], strict=False))
                 overlap = added_set & removed_set
                 assert isinstance(overlap, set)
 

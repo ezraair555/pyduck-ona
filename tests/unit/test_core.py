@@ -11,7 +11,6 @@ from pyduck_ona.core import (
     hierarchy_wide,
 )
 
-
 # ─── hierarchy_valid ────────────────────────────────────────────────────────
 
 class TestHierarchyValid:
@@ -302,7 +301,7 @@ class TestErrorGuidance:
 
     def test_max_depth_error_suggests_default(self):
         rel = duckdb.sql("SELECT 'A' AS e, CAST(NULL AS VARCHAR) AS s")
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=r"max_depth must be 1\.\.100, got 200.*default") as exc_info:
             hierarchy_wide(rel, "e", "s", max_depth=200).df()
         # Error must mention the default as a hint, not just complain.
         assert "default" in str(exc_info.value).lower()

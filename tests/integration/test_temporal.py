@@ -16,7 +16,6 @@ import pytest
 
 from pyduck_ona import DuckONATemporal
 
-
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 
 

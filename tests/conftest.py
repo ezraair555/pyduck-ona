@@ -18,15 +18,6 @@ def simple_org() -> duckdb.DuckDBPyRelation:
               └─ E101 (Director)
                    └─ E1010 (IC)
     """
-    rows = [
-        ("E001", None),     # CEO — root
-        ("E010", "E001"),   # VP
-        ("E100", "E010"),   # Director
-        ("E101", "E010"),   # Director
-        ("E1000", "E100"),  # IC
-        ("E1001", "E100"),  # IC
-        ("E1010", "E101"),  # IC
-    ]
     return duckdb.sql(
         "SELECT * FROM (VALUES (CAST(? AS VARCHAR), CAST(? AS VARCHAR)), "
         "(CAST(? AS VARCHAR), CAST(? AS VARCHAR)), "
@@ -51,13 +42,6 @@ def simple_org() -> duckdb.DuckDBPyRelation:
 @pytest.fixture
 def broken_org() -> duckdb.DuckDBPyRelation:
     """An org with all four classes of issue for testing hierarchy_valid."""
-    rows = [
-        ("E001", None),       # root (legitimate)
-        ("E002", None),       # second root → multiple_roots
-        ("E010", "E001"),     # OK
-        ("E011", "E999"),     # broken_chain (E999 doesn't exist)
-        ("E012", "E012"),     # self_reference
-    ]
     return duckdb.sql(
         "SELECT * FROM (VALUES (CAST(? AS VARCHAR), CAST(? AS VARCHAR)), "
         "(CAST(? AS VARCHAR), CAST(? AS VARCHAR)), "

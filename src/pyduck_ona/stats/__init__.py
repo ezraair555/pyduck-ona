@@ -25,14 +25,16 @@ from __future__ import annotations
 
 import os
 import re
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any
 
 import duckdb
 import pandas as pd
 
 if TYPE_CHECKING:
-    from duckdb import DuckDBPyRelation
+    from collections.abc import Sequence
+
     import matplotlib.figure
+    from duckdb import DuckDBPyRelation
 
 # Same safe-identifier rule used by core.py; keep local to avoid a
 # cross-module dependency for this thin validation helper.
@@ -114,7 +116,7 @@ def _compare():
 
 # ─── DataFrame extraction ──────────────────────────────────────────────────
 
-def _as_df(data: "DuckDBPyRelation | pd.DataFrame") -> pd.DataFrame:
+def _as_df(data: DuckDBPyRelation | pd.DataFrame) -> pd.DataFrame:
     """Coerce input to a pandas DataFrame.
 
     DuckDB relations and pandas DataFrames are both accepted; the broom
@@ -132,7 +134,7 @@ def _as_df(data: "DuckDBPyRelation | pd.DataFrame") -> pd.DataFrame:
 # ─── Correlation ───────────────────────────────────────────────────────────
 
 def correlation(
-    data: "DuckDBPyRelation | pd.DataFrame",
+    data: DuckDBPyRelation | pd.DataFrame,
     columns: Sequence[str] | None = None,
     *,
     col1: str | None = None,
@@ -176,7 +178,7 @@ def correlation(
 # ─── ANOVA ─────────────────────────────────────────────────────────────────
 
 def anova(
-    data: "DuckDBPyRelation | pd.DataFrame",
+    data: DuckDBPyRelation | pd.DataFrame,
     formula: str,
     *,
     anova_type: int = 2,
@@ -208,7 +210,7 @@ def anova(
 # ─── Linear regression (OLS) ───────────────────────────────────────────────
 
 def ols(
-    data: "DuckDBPyRelation | pd.DataFrame",
+    data: DuckDBPyRelation | pd.DataFrame,
     formula: str,
     *,
     cov_type: str = "nonrobust",
@@ -247,7 +249,7 @@ def ols(
     )
     glance_df = _glance()(
         df, formula, stat_type="ols",
-        cov_type=cov_type, alpha=alpha,
+        cov_type=cov_type,
     )
     return tidy_df, glance_df
 
@@ -255,7 +257,7 @@ def ols(
 # ─── Logistic regression ───────────────────────────────────────────────────
 
 def logistic(
-    data: "DuckDBPyRelation | pd.DataFrame",
+    data: DuckDBPyRelation | pd.DataFrame,
     formula: str,
     *,
     cov_type: str = "nonrobust",
@@ -293,7 +295,7 @@ def logistic(
     )
     glance_df = _glance()(
         df, formula, stat_type="logit",
-        cov_type=cov_type, alpha=alpha,
+        cov_type=cov_type,
     )
     return tidy_df, glance_df
 
@@ -301,10 +303,10 @@ def logistic(
 # ─── Chi-square test of independence ───────────────────────────────────────
 
 def chi_square(
-    data: "DuckDBPyRelation | pd.DataFrame",
+    data: DuckDBPyRelation | pd.DataFrame,
     x: str,
     y: str,
-) -> tuple[pd.DataFrame, "matplotlib.figure.Figure"]:
+) -> tuple[pd.DataFrame, matplotlib.figure.Figure]:
     """Chi-square test of independence between two categorical variables.
 
     Parameters
@@ -334,10 +336,10 @@ def chi_square(
 # ─── Plots ─────────────────────────────────────────────────────────────────
 
 def plot_ols(
-    data: "DuckDBPyRelation | pd.DataFrame",
+    data: DuckDBPyRelation | pd.DataFrame,
     x: Sequence[str],
     y: str,
-) -> list[tuple[str, "matplotlib.figure.Figure"]]:
+) -> list[tuple[str, matplotlib.figure.Figure]]:
     """Per-predictor OLS scatterplots with fitted regression line.
 
     Returns a list of ``(x_label, figure)`` tuples — one figure per
@@ -353,10 +355,10 @@ def plot_ols(
 
 
 def plot_residuals(
-    data: "DuckDBPyRelation | pd.DataFrame",
+    data: DuckDBPyRelation | pd.DataFrame,
     x: Sequence[str],
     y: str,
-) -> list[tuple[str, "matplotlib.figure.Figure"]]:
+) -> list[tuple[str, matplotlib.figure.Figure]]:
     """Residual-diagnostic plots for each predictor.
 
     One figure per predictor showing residuals against the predictor
@@ -372,7 +374,7 @@ def plot_coefficients(
     *,
     reference_line: float = 0.0,
     sort: bool = True,
-) -> tuple["matplotlib.figure.Figure", Any]:
+) -> tuple[matplotlib.figure.Figure, Any]:
     """Forest plot of regression coefficients with confidence intervals.
 
     Parameters
@@ -397,7 +399,7 @@ def plot_coefficients(
 # ─── Diagnostic helpers ────────────────────────────────────────────────────
 
 def vif(
-    data: "DuckDBPyRelation | pd.DataFrame",
+    data: DuckDBPyRelation | pd.DataFrame,
     formula: str,
 ) -> pd.Series:
     """Variance Inflation Factors for the predictors in a formula.
@@ -453,9 +455,9 @@ def _validate_table_name(name: str) -> None:
 
 def tidy_to_duckdb(
     tidy_df: pd.DataFrame,
-    con: "duckdb.DuckDBPyConnection | None" = None,
+    con: duckdb.DuckDBPyConnection | None = None,
     table_name: str = "model_tidy",
-) -> tuple[str, "duckdb.DuckDBPyConnection"]:
+) -> tuple[str, duckdb.DuckDBPyConnection]:
     """Write a tidy model result into a DuckDB table.
 
     Parameters
@@ -495,16 +497,16 @@ def tidy_to_duckdb(
     # resulting DuckDB table is queryable without manual quoting. This
     # is purely a write-time rewrite; the in-memory ``tidy_df`` argument
     # is not mutated.
-    safe_df = tidy_df.rename(columns=lambda c: c.replace(".", "_"))
-    con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM safe_df")
+    _safe_df = tidy_df.rename(columns=lambda c: c.replace(".", "_"))
+    con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM _safe_df")
     return table_name, con
 
 
 def to_duckdb(
-    data: "DuckDBPyRelation | pd.DataFrame",
+    data: DuckDBPyRelation | pd.DataFrame,
     table_name: str,
-    con: "duckdb.DuckDBPyConnection | None" = None,
-) -> tuple["DuckDBPyRelation", "duckdb.DuckDBPyConnection"]:
+    con: duckdb.DuckDBPyConnection | None = None,
+) -> tuple[DuckDBPyRelation, duckdb.DuckDBPyConnection]:
     """Register a DataFrame or relation as a DuckDB table.
 
     Parameters
@@ -539,7 +541,7 @@ def to_duckdb(
 # ─── Save figures (small UX nicety) ────────────────────────────────────────
 
 def save_figure(
-    fig: "matplotlib.figure.Figure",
+    fig: matplotlib.figure.Figure,
     path: str,
     *,
     dpi: int = 120,

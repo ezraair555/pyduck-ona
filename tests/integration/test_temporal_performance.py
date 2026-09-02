@@ -35,7 +35,6 @@ def _build_large_org(
     seed: int = 20260827,
 ) -> pd.DataFrame:
     """Build a synthetic HRIS with N employees across M periods."""
-    rng = np.random.default_rng(seed=seed)
     n_ceo, n_vp, n_dir, n_ic = n_per_level
 
     rows: list[tuple[str, str | None, int, str]] = []
@@ -71,21 +70,21 @@ def test_500_employees_4_periods_runs() -> None:
     dt.load_snapshots(hris, snapshot_date_col="snapshot_date", freq="Q")
 
     t0 = time.time()
-    ts = dt.compute_temporal_metrics(metrics=["betweenness"])
+    _ts = dt.compute_temporal_metrics(metrics=["betweenness"])
     t1 = time.time()
-    assert len(ts) > 0
+    assert len(_ts) > 0
     assert (t1 - t0) < 30.0, f"compute_temporal_metrics took {t1 - t0:.1f}s"
 
     t0 = time.time()
-    ev = dt.network_evolution()
+    _ev = dt.network_evolution()
     t1 = time.time()
-    assert len(ev) == 4
+    assert len(_ev) == 4
     assert (t1 - t0) < 30.0, f"network_evolution took {t1 - t0:.1f}s"
 
     t0 = time.time()
-    lb = dt.mobility_leaderboard(top_n=20)
+    _lb = dt.mobility_leaderboard(top_n=20)
     t1 = time.time()
-    assert len(lb) > 0
+    assert len(_lb) > 0
     assert (t1 - t0) < 30.0, f"mobility_leaderboard took {t1 - t0:.1f}s"
 
 
@@ -96,15 +95,15 @@ def test_100_employees_4_periods_fast() -> None:
     dt.load_snapshots(hris, snapshot_date_col="snapshot_date", freq="Q")
 
     t0 = time.time()
-    ts = dt.compute_temporal_metrics(metrics=["betweenness"])
+    _ts = dt.compute_temporal_metrics(metrics=["betweenness"])
     assert (time.time() - t0) < 10.0
 
     t0 = time.time()
-    ev = dt.network_evolution()
+    _ev = dt.network_evolution()
     assert (time.time() - t0) < 10.0
 
     t0 = time.time()
-    lb = dt.mobility_leaderboard(top_n=10)
+    _lb = dt.mobility_leaderboard(top_n=10)
     assert (time.time() - t0) < 10.0
 
 
@@ -116,9 +115,9 @@ def test_50_employees_4_periods_very_fast() -> None:
 
     t0 = time.time()
     for _ in range(3):  # run 3 times to amortize setup
-        ts = dt.compute_temporal_metrics(metrics=["betweenness"])
-        ev = dt.network_evolution()
-        lb = dt.mobility_leaderboard(top_n=5)
+        _ts = dt.compute_temporal_metrics(metrics=["betweenness"])
+        _ev = dt.network_evolution()
+        _lb = dt.mobility_leaderboard(top_n=5)
     elapsed = time.time() - t0
     assert elapsed < 15.0, f"3 full passes took {elapsed:.1f}s"
 
