@@ -6,15 +6,16 @@ faster than fetching row-by-row or building pandas DataFrames first.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     import igraph as ig
     import networkx as nx
+    import pyarrow as pa
     from duckdb import DuckDBPyRelation
 
 
-def _to_arrow_table(rel: DuckDBPyRelation):
+def _to_arrow_table(rel: DuckDBPyRelation) -> pa.Table:
     """Materialize a DuckDB relation into a pyarrow.Table.
 
     DuckDB >=1.3 returns a streaming ``RecordBatchReader`` from
@@ -27,8 +28,8 @@ def _to_arrow_table(rel: DuckDBPyRelation):
     result = rel.arrow()
     # DuckDB 1.3+ returns a RecordBatchReader; older versions return Table.
     if hasattr(result, "read_all"):
-        return result.read_all()
-    return result
+        return cast("pa.Table", result.read_all())
+    return cast("pa.Table", result)
 
 
 def to_networkx(
@@ -39,7 +40,7 @@ def to_networkx(
     graph_type: str = "DiGraph",
     node_attrs: DuckDBPyRelation | None = None,
     node_id_col: str = "node_id",
-) -> nx.Graph | nx.DiGraph:
+) -> nx.Graph[Any] | nx.DiGraph[Any]:
     """Convert an edge relation into a NetworkX graph via Arrow.
 
     Parameters
@@ -80,7 +81,7 @@ def to_networkx(
     import networkx as nx
 
     if graph_type == "DiGraph":
-        graph = nx.DiGraph()
+        graph: nx.Graph[Any] | nx.DiGraph[Any] = nx.DiGraph()
     elif graph_type == "Graph":
         graph = nx.Graph()
     else:
@@ -170,7 +171,7 @@ def to_igraph(
             )
         ids = attr_table.column(node_id_col).to_pylist()
         # Build per-node dict of attrs
-        attr_by_id: dict = {ids[i]: {} for i in range(len(ids))}
+        attr_by_id: dict[Any, dict[str, Any]] = {ids[i]: {} for i in range(len(ids))}
         for col in cols:
             if col == node_id_col:
                 continue

@@ -27,14 +27,15 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import date, datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import duckdb
 import numpy as np
 import pandas as pd
+from duckdb import DuckDBPyRelation
 
 if TYPE_CHECKING:
-    from duckdb import DuckDBPyConnection, DuckDBPyRelation
+    from duckdb import DuckDBPyConnection
     from numpy.typing import NDArray
 
 from pyduck_ona import graph as _graph
@@ -285,7 +286,7 @@ class DuckONA:
             WHERE {emp} IS NULL
                OR CAST({emp} AS VARCHAR) = ''
         """
-        n_null = int(self.con.sql(null_sql).fetchone()[0])  # type: ignore[arg-type]
+        n_null = int(self.con.sql(null_sql).fetchone()[0])  # type: ignore[index]
         if n_null:
             raise ValueError(
                 f"{table_name}.{employee_id_col} contains {n_null} NULL/empty value(s)"
@@ -298,7 +299,7 @@ class DuckONA:
                 SELECT COUNT(*) - COUNT(DISTINCT ({emp}, {date_quoted})) AS dups
                 FROM {table_name}
             """
-            n_dups = int(self.con.sql(dup_sql).fetchone()[0])  # type: ignore[arg-type]
+            n_dups = int(self.con.sql(dup_sql).fetchone()[0])  # type: ignore[index]
             if n_dups:
                 raise ValueError(
                     f"{table_name} has {n_dups} duplicate ({employee_id_col}, {date_col}) rows"
@@ -313,7 +314,7 @@ class DuckONA:
                 FROM {table_name}
                 WHERE CAST({date_quoted} AS DATE) > CAST('{today_str}' AS DATE)
             """
-            n_future = int(self.con.sql(future_sql).fetchone()[0])  # type: ignore[arg-type]
+            n_future = int(self.con.sql(future_sql).fetchone()[0])  # type: ignore[index]
             if n_future:
                 raise ValueError(f"{table_name}.{date_col} contains {n_future} future date(s)")
 
@@ -328,7 +329,7 @@ class DuckONA:
                     FROM {table_name}
                     WHERE CAST({date_quoted} AS DATE) < CAST('{lower.isoformat()}' AS DATE)
                 """
-                n_low = int(self.con.sql(low_sql).fetchone()[0])  # type: ignore[arg-type]
+                n_low = int(self.con.sql(low_sql).fetchone()[0])  # type: ignore[index]
                 if n_low:
                     raise ValueError(
                         f"{table_name}.{date_col} contains {n_low} date(s) before {lower}"
@@ -339,7 +340,7 @@ class DuckONA:
                     FROM {table_name}
                     WHERE CAST({date_quoted} AS DATE) > CAST('{upper.isoformat()}' AS DATE)
                 """
-                n_up = int(self.con.sql(up_sql).fetchone()[0])  # type: ignore[arg-type]
+                n_up = int(self.con.sql(up_sql).fetchone()[0])  # type: ignore[index]
                 if n_up:
                     raise ValueError(
                         f"{table_name}.{date_col} contains {n_up} date(s) after {upper}"
@@ -351,7 +352,7 @@ class DuckONA:
                 SELECT COUNT(*) - COUNT(DISTINCT {emp}) AS dups
                 FROM {table_name}
             """
-            n_dups = int(self.con.sql(dup_sql).fetchone()[0])  # type: ignore[arg-type]
+            n_dups = int(self.con.sql(dup_sql).fetchone()[0])  # type: ignore[index]
             if n_dups:
                 raise ValueError(
                     f"{table_name}.{employee_id_col} contains {n_dups} duplicate value(s)"
@@ -403,7 +404,7 @@ class DuckONA:
             counts = out.groupby(id_col).size()
             keep = counts[counts >= min_records].index
             out = out[out[id_col].isin(keep)]
-        return out.reset_index(drop=True)
+        return cast("pd.DataFrame", out.reset_index(drop=True))
 
     @staticmethod
     def deduplicate(
@@ -426,7 +427,7 @@ class DuckONA:
             Which duplicate row to retain.
         """
         cols = [id_col] if date_col is None else [id_col, date_col]
-        return df.drop_duplicates(subset=cols, keep=keep).reset_index(drop=True)
+        return cast("pd.DataFrame", df.drop_duplicates(subset=cols, keep=keep).reset_index(drop=True))
 
     # ── Org edges ───────────────────────────────────────────────────────────
 
@@ -737,7 +738,8 @@ class DuckONA:
         out = feature_frame[[employee_id_col] + selected_features].copy()
         out["cluster_id"] = labels.astype(int)
         out["cluster_confidence"] = confidence
-        return out.sort_values([employee_id_col]).reset_index(drop=True)
+        sorted_out = out.sort_values([employee_id_col]).reset_index(drop=True)
+        return cast("pd.DataFrame", sorted_out)
 
     # ── Model helpers ───────────────────────────────────────────────────────
 
@@ -817,7 +819,7 @@ class DuckONA:
         table_name: str = "engagement_predictions",
         new_data: pd.DataFrame | DuckDBPyRelation | None = None,
         stat_type: Literal["ols", "logit"] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> pd.DataFrame:
         """Predict engagement scores based on demographics and ONA metrics.
 
@@ -828,13 +830,13 @@ class DuckONA:
         # Infer stat_type from formula/data if not provided
         if stat_type is None:
             resp_col = formula.split("~")[0].strip()
-            df_check = data.df() if hasattr(data, "df") else data
+            df_check = data.df() if isinstance(data, DuckDBPyRelation) else data
             unique_vals = df_check[resp_col].unique()
             stat_type = "logit" if len(unique_vals) <= 2 else "ols"
 
         # Use statsmodels directly to handle prediction without broom-sm overhead
         import statsmodels.formula.api as smf
-        df_train = data.df() if hasattr(data, "df") else data
+        df_train = data.df() if isinstance(data, DuckDBPyRelation) else data
 
         if stat_type == "logit":
             model = smf.logit(formula, data=df_train).fit(disp=0)
@@ -842,17 +844,23 @@ class DuckONA:
             model = smf.ols(formula, data=df_train).fit()
 
         # Predict on training or new data
-        predict_df = new_data.df() if (new_data is not None and hasattr(new_data, "df")) else (new_data if new_data is not None else df_train)
+        if new_data is not None:
+            predict_df = new_data.df() if isinstance(new_data, DuckDBPyRelation) else new_data
+        else:
+            predict_df = df_train
 
         predictions = model.predict(predict_df)
-        results = predict_df.copy() if isinstance(predict_df, pd.DataFrame) else pd.DataFrame(predict_df)
+        if isinstance(predict_df, pd.DataFrame):
+            results = predict_df.copy()
+        else:
+            results = pd.DataFrame(predict_df)
         results["predicted_score"] = predictions
 
         # Register result back into DuckDB
         _validate_table_name(table_name)
         self.con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM results")
 
-        return results
+        return cast("pd.DataFrame", results)
 
     # ── Temporal slicing ──────────────────────────────────────────────────
 

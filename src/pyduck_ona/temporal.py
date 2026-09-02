@@ -45,13 +45,14 @@ Example
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import duckdb
 import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
+    import networkx as nx
     from duckdb import DuckDBPyRelation
 
 from pyduck_ona import graph as _graph
@@ -190,7 +191,7 @@ def _subtree_ids(
     # BFS from manager_id
     subtree: list[Any] = []
     queue = [manager_id]
-    seen: set = set()
+    seen: set[Any] = set()
     while queue:
         node = queue.pop(0)
         if node in seen:
@@ -203,7 +204,7 @@ def _subtree_ids(
     return subtree
 
 
-def _safe_zscore(values: np.ndarray, peer_median: float, peer_std: float) -> float:
+def _safe_zscore(values: np.ndarray[Any, Any], peer_median: float, peer_std: float) -> float:
     """Compute z-score; return 0.0 if peer_std is 0 or NaN."""
     if peer_std is None or peer_std == 0 or np.isnan(peer_std):
         return 0.0
@@ -385,14 +386,15 @@ class DuckONATemporal:
             "louvain_communities": _graph.louvain_communities,
         }
 
-        all_rows: list[dict] = []
+        all_rows: list[dict[str, Any]] = []
         prev_values: dict[str, dict[Any, float]] = {}  # metric → {emp_id: value}
 
         for period in self._periods:
             edges = _edges_for_period(
                 self.con, self._table_name, emp, sup, self._date_col, period, self._freq
             )
-            n_edges = edges.count("*").fetchone()[0]
+            row = edges.count("*").fetchone()
+            n_edges = 0 if row is None else row[0]
             if n_edges == 0:
                 continue
 
@@ -410,9 +412,9 @@ class DuckONATemporal:
                         "supervisor_id",
                     )
                     stats_df = stats_rel.df()
-                    for _, row in stats_df.iterrows():
-                        eid = row["manager_id"]
-                        val = float(row["team_size"])
+                    for i in range(len(stats_df)):
+                        eid = cast("Any", stats_df.at[i, "manager_id"])
+                        val = float(cast("Any", stats_df.at[i, "team_size"]))
                         prev = prev_values.get(metric_name, {}).get(eid, np.nan)
                         delta = val - prev if not np.isnan(prev) else np.nan
                         pct = (delta / prev * 100) if (not np.isnan(prev) and prev != 0) else np.nan
@@ -428,9 +430,9 @@ class DuckONATemporal:
                     df = rel.df()
                     id_col = "node_id" if "node_id" in df.columns else df.columns[0]
                     val_col = [c for c in df.columns if c != id_col][0]
-                    for _, row in df.iterrows():
-                        eid = row[id_col]
-                        val = float(row[val_col])
+                    for i in range(len(df)):
+                        eid = cast("Any", df.at[i, id_col])
+                        val = float(cast("Any", df.at[i, val_col]))
                         prev = prev_values.get(metric_name, {}).get(eid, np.nan)
                         delta = val - prev if not np.isnan(prev) else np.nan
                         pct = (delta / prev * 100) if (not np.isnan(prev) and prev != 0) else np.nan
@@ -471,7 +473,7 @@ class DuckONATemporal:
         sup = supervisor_id_col or self._sup_col
         freq_word = _FREQ_MAP[self._freq]
 
-        rows: list[dict] = []
+        rows: list[dict[str, Any]] = []
         for period in self._periods:
             edges = _edges_for_period(
                 self.con, self._table_name, emp, sup, self._date_col, period, self._freq
@@ -496,7 +498,7 @@ class DuckONATemporal:
 
             # Build NetworkX graph
             pairs = [(s, t) for s, t in zip(df[emp], df[sup], strict=False) if pd.notna(s) and pd.notna(t)]
-            graph = nx.DiGraph()
+            graph: nx.DiGraph[Any] = nx.DiGraph()
             graph.add_edges_from(pairs)
 
             n_nodes = graph.number_of_nodes()
@@ -572,7 +574,7 @@ class DuckONATemporal:
         if post_window:
             post_periods = [p for p in post_periods if post_window[0] <= p <= post_window[1]]
 
-        rows: list[dict] = []
+        rows: list[dict[str, Any]] = []
         metric_fn_map = {
             "betweenness": _graph.betweenness,
             "pagerank": _graph.pagerank,
@@ -586,7 +588,8 @@ class DuckONATemporal:
                     self.con, self._table_name, self._emp_col, self._sup_col,
                     self._date_col, period, self._freq,
                 )
-                if edges.count("*").fetchone()[0] == 0:
+                edge_row = edges.count("*").fetchone()
+                if edge_row is None or edge_row[0] == 0:
                     continue
                 for mname in metrics:
                     if mname not in metric_fn_map:
@@ -660,11 +663,11 @@ class DuckONATemporal:
         pivot["rolling_zscore"] = (
             (pivot["delta"] - mean_delta) / std_delta if std_delta > 0 else 0.0
         )
-        pivot = pivot.sort_values("delta", key=abs, ascending=False)
+        pivot = cast("pd.DataFrame", pivot.sort_values("delta", key=abs, ascending=False))
         pivot["rank"] = range(1, len(pivot) + 1)
         result = pivot[["start_value", "end_value", "delta", "pct_change", "rolling_zscore", "rank"]].head(top_n)
         result = result.reset_index()
-        return result
+        return cast("pd.DataFrame", result)
 
     # ── 5. mobility_leaderboard ─────────────────────────────────────────────
 
@@ -724,14 +727,14 @@ class DuckONATemporal:
             raise ValueError("no snapshot data found for the lookback window")
 
         # Build per-employee transition history
-        all_emp_ids: set = set()
+        all_emp_ids: set[Any] = set()
         for s in snapshots:
             if not s.empty:
                 all_emp_ids.update(s[emp].tolist())
 
-        rows: list[dict] = []
+        rows: list[dict[str, Any]] = []
         for eid in all_emp_ids:
-            periods_data: list[dict] = []
+            periods_data: list[dict[str, Any]] = []
             for s in snapshots:
                 if s.empty:
                     continue
@@ -769,7 +772,7 @@ class DuckONATemporal:
                 curr_dept = curr.get("department")
 
                 # Coerce NaN→None for safe comparison (avoids pd.NA ambiguity)
-                def _clean(v, _pd=pd):
+                def _clean(v: Any, _pd: Any = pd) -> Any:
                     if v is None:
                         return None
                     try:
@@ -832,7 +835,7 @@ class DuckONATemporal:
             return result
         result = result.sort_values("mobility_score", ascending=False).head(top_n)
         result["rank"] = range(1, len(result) + 1)
-        return result.reset_index(drop=True)
+        return cast("pd.DataFrame", result.reset_index(drop=True))
 
     # ── 6. career_trajectory + manager_chain ───────────────────────────────
 
@@ -861,10 +864,8 @@ class DuckONATemporal:
         emp = self._emp_col
         sup = self._sup_col
         freq_word = _FREQ_MAP[self._freq]
-        freq_word = _FREQ_MAP[self._freq]
-        freq_word = _FREQ_MAP[self._freq]
 
-        rows: list[dict] = []
+        rows: list[dict[str, Any]] = []
         prev_sup = None
         prev_lvl = None
         prev_dept = None
@@ -933,7 +934,7 @@ class DuckONATemporal:
         sup = self._sup_col
         freq_word = _FREQ_MAP[self._freq]
 
-        rows: list[dict] = []
+        rows: list[dict[str, Any]] = []
         for p in use_periods:
             df = self.con.sql(f"""
                 SELECT * FROM {self._table_name}
@@ -953,7 +954,7 @@ class DuckONATemporal:
             # Look up manager's info in the same snapshot
             mgr_name = None
             mgr_level = None
-            path: list = []
+            path: list[Any] = []
             if mgr_id is not None:
                 mgr_df = self.con.sql(f"""
                     SELECT * FROM {self._table_name}
@@ -977,7 +978,7 @@ class DuckONATemporal:
                     long_df = long_rel.df()
                     # Walk up from employee
                     current = employee_id
-                    visited: set = set()
+                    visited: set[Any] = set()
                     while current is not None and current not in visited:
                         visited.add(current)
                         match = long_df[long_df["employee_id"] == current]
@@ -1048,14 +1049,14 @@ class DuckONATemporal:
             df["_period"] = p
             snapshots.append(df)
 
-        all_emp_ids: set = set()
+        all_emp_ids: set[Any] = set()
         for s in snapshots:
             if not s.empty:
                 all_emp_ids.update(s[emp].tolist())
 
-        emp_data: list[dict] = []
+        emp_data: list[dict[str, Any]] = []
         for eid in all_emp_ids:
-            periods_data: list[dict] = []
+            periods_data: list[dict[str, Any]] = []
             for s in snapshots:
                 if s.empty:
                     continue
@@ -1116,7 +1117,8 @@ class DuckONATemporal:
         result["is_stuck"] = result["stuckness_zscore"] > stuckness_threshold
         result["is_mobility_leader"] = result["stuckness_zscore"] < -stuckness_threshold
         result = result.drop(columns=["peer_key"])
-        return result.sort_values("stuckness_zscore", ascending=False).reset_index(drop=True)
+        sorted_result = result.sort_values("stuckness_zscore", ascending=False).reset_index(drop=True)
+        return cast("pd.DataFrame", sorted_result)
 
     # ── 8. manager_effectiveness ─────────────────────────────────────────────
 
@@ -1195,7 +1197,7 @@ class DuckONATemporal:
         freq_word = _FREQ_MAP[self._freq]
 
         # Gather all managers (anyone who is a supervisor in any period)
-        managers: set = set()
+        managers: set[Any] = set()
         for p in use_periods:
             df = self.con.sql(f"""
                 SELECT DISTINCT {_quote(sup)} AS mgr
@@ -1214,7 +1216,7 @@ class DuckONATemporal:
         has_survey = survey_tbl in self._extra_tables or self._con_table_exists(survey_tbl)
         has_promotions = prom_tbl in self._extra_tables or self._con_table_exists(prom_tbl)
 
-        manager_data: list[dict] = []
+        manager_data: list[dict[str, Any]] = []
         for mgr_id in managers:
             # For each period, get subtree and aggregate
             period_engagements: list[float] = []
@@ -1352,9 +1354,9 @@ class DuckONATemporal:
           + w_span * result["peer_span_efficiency"]
         )
 
-        result = result.sort_values("effectiveness_score", ascending=False)
+        result = cast("pd.DataFrame", result.sort_values("effectiveness_score", ascending=False))
         result["rank"] = range(1, len(result) + 1)
-        return result.reset_index(drop=True)
+        return cast("pd.DataFrame", result.reset_index(drop=True))
 
     def career_markov_matrix(
         self,
@@ -1439,9 +1441,10 @@ class DuckONATemporal:
         )
         totals = out.groupby(["segment", "from_state"])["transitions"].transform("sum")
         out["probability"] = out["transitions"] / totals
-        return out.sort_values(
+        sorted_out = out.sort_values(
             ["segment", "from_state", "probability"], ascending=[True, True, False]
         ).reset_index(drop=True)
+        return cast("pd.DataFrame", sorted_out)
 
     def career_markov_forecast(
         self,
@@ -1537,9 +1540,10 @@ class DuckONATemporal:
                     }
                 )
 
-        return pd.DataFrame(rows).sort_values(
+        sorted_out = pd.DataFrame(rows).sort_values(
             ["step", "probability"], ascending=[True, False]
         ).reset_index(drop=True)
+        return cast("pd.DataFrame", sorted_out)
 
     def org_design_scorecard(
         self,

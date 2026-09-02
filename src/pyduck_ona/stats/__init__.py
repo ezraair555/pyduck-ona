@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import duckdb
 import pandas as pd
@@ -59,57 +59,57 @@ def _require_broom() -> None:
 
 # ─── Lazy imports (defer until call time) ──────────────────────────────────
 
-def _tidy():
+def _tidy() -> Any:
     from broom_sm import stats_tidy
     return stats_tidy
 
 
-def _glance():
+def _glance() -> Any:
     from broom_sm import stats_glance
     return stats_glance
 
 
-def _augment():
+def _augment() -> Any:
     from broom_sm import stats_augment
     return stats_augment
 
 
-def _anova_tidy():
+def _anova_tidy() -> Any:
     from broom_sm import stats_anova_tidy
     return stats_anova_tidy
 
 
-def _corr_tidy():
+def _corr_tidy() -> Any:
     from broom_sm import stats_correlation_tidy
     return stats_correlation_tidy
 
 
-def _ols_plot():
+def _ols_plot() -> Any:
     from broom_sm import stats_ols_plot
     return stats_ols_plot
 
 
-def _chisq_plot():
+def _chisq_plot() -> Any:
     from broom_sm import stats_chisquare_plot
     return stats_chisquare_plot
 
 
-def _residual_plot():
+def _residual_plot() -> Any:
     from broom_sm import stats_residual_plot
     return stats_residual_plot
 
 
-def _coef_forest():
+def _coef_forest() -> Any:
     from broom_sm import stats_coef_forest
     return stats_coef_forest
 
 
-def _vif():
+def _vif() -> Any:
     from broom_sm import stats_vif
     return stats_vif
 
 
-def _compare():
+def _compare() -> Any:
     from broom_sm import stats_compare
     return stats_compare
 
@@ -172,7 +172,7 @@ def correlation(
             "pass either `columns=[...]` (pairwise) or `col1=..., col2=...` (single)"
         )
     df = _as_df(data)
-    return _corr_tidy()(df, col1=col1, col2=col2, method=method, columns=columns)
+    return cast("pd.DataFrame", _corr_tidy()(df, col1=col1, col2=col2, method=method, columns=columns))
 
 
 # ─── ANOVA ─────────────────────────────────────────────────────────────────
@@ -204,7 +204,7 @@ def anova(
     """
     _require_broom()
     df = _as_df(data)
-    return _anova_tidy()(df, formula, anova_type=anova_type)
+    return cast("pd.DataFrame", _anova_tidy()(df, formula, anova_type=anova_type))
 
 
 # ─── Linear regression (OLS) ───────────────────────────────────────────────
@@ -243,14 +243,14 @@ def ols(
     """
     _require_broom()
     df = _as_df(data)
-    tidy_df = _tidy()(
+    tidy_df = cast("pd.DataFrame", _tidy()(
         df, formula, stat_type="ols",
         cov_type=cov_type, alpha=alpha,
-    )
-    glance_df = _glance()(
+    ))
+    glance_df = cast("pd.DataFrame", _glance()(
         df, formula, stat_type="ols",
         cov_type=cov_type,
-    )
+    ))
     return tidy_df, glance_df
 
 
@@ -289,14 +289,14 @@ def logistic(
     """
     _require_broom()
     df = _as_df(data)
-    tidy_df = _tidy()(
+    tidy_df = cast("pd.DataFrame", _tidy()(
         df, formula, stat_type="logit",
         cov_type=cov_type, alpha=alpha,
-    )
-    glance_df = _glance()(
+    ))
+    glance_df = cast("pd.DataFrame", _glance()(
         df, formula, stat_type="logit",
         cov_type=cov_type,
-    )
+    ))
     return tidy_df, glance_df
 
 
@@ -330,7 +330,7 @@ def chi_square(
     """
     _require_broom()
     df = _as_df(data)
-    return _chisq_plot()(df, x, y)
+    return cast("tuple[pd.DataFrame, matplotlib.figure.Figure]", _chisq_plot()(df, x, y))
 
 
 # ─── Plots ─────────────────────────────────────────────────────────────────
@@ -351,7 +351,9 @@ def plot_ols(
     """
     _require_broom()
     df = _as_df(data)
-    return _ols_plot()(df, x, y)
+    return cast(
+        "list[tuple[str, matplotlib.figure.Figure]]", _ols_plot()(df, x, y)
+    )
 
 
 def plot_residuals(
@@ -366,7 +368,9 @@ def plot_residuals(
     """
     _require_broom()
     df = _as_df(data)
-    return _residual_plot()(df, x, y)
+    return cast(
+        "list[tuple[str, matplotlib.figure.Figure]]", _residual_plot()(df, x, y)
+    )
 
 
 def plot_coefficients(
@@ -410,7 +414,7 @@ def vif(
     """
     _require_broom()
     df = _as_df(data)
-    return _vif()(df, formula)
+    return cast("pd.Series[Any]", _vif()(df, formula))
 
 
 def model_compare(
@@ -431,7 +435,7 @@ def model_compare(
         each column is one of the input models.
     """
     _require_broom()
-    return _compare()(models)
+    return cast("pd.DataFrame", _compare()(models))
 
 
 def _validate_table_name(name: str) -> None:

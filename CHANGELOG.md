@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Full ruff lint cleanup: 196 violations → 0.
 - Public docstring coverage is now 100%.
+- Strict mypy type-checking now passes across `src/pyduck_ona` and is enforced in CI.
 
 ## [0.1.5] - 2026-08-27
 

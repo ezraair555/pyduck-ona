@@ -19,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import re
 import uuid
+from typing import Any
 
 import duckdb
 
@@ -180,7 +181,7 @@ def _validate_columns(
 def _run_sql_on_default(
     rel: duckdb.DuckDBPyRelation,
     sql: str,
-    params: list | None = None,
+    params: list[Any] | None = None,
 ) -> duckdb.DuckDBPyRelation:
     """Run SQL against ``rel`` on the default DuckDB connection.
 

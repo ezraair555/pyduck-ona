@@ -30,7 +30,7 @@ return ``pd.DataFrame`` for terminal use.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pandas as pd
@@ -88,7 +88,7 @@ def _period_employees(
     return con.sql(sql, params=params)
 
 
-def _metric_fn_map() -> dict:
+def _metric_fn_map() -> dict[str, Any]:
     return {
         "betweenness": _graph.betweenness,
         "pagerank": _graph.pagerank,
@@ -120,7 +120,8 @@ def _compute_metric_for_period(
 ) -> pd.DataFrame:
     """Compute one metric for one period, return DataFrame with id + value."""
     edges = _period_edges(con, table, emp_col, sup_col, date_col, period, freq_word=freq_word)
-    if edges.count("*").fetchone()[0] == 0:
+    row = edges.count("*").fetchone()
+    if row is None or row[0] == 0:
         return pd.DataFrame(columns=["employee_id", metric])
     fn = _metric_fn_map().get(metric)
     if fn is not None:
@@ -128,7 +129,7 @@ def _compute_metric_for_period(
         df = rel.df()
         id_col, val_col = _metric_value_column(df)
         out = df.rename(columns={id_col: "employee_id", val_col: metric})
-        return out[["employee_id", metric]]
+        return cast("pd.DataFrame", out[["employee_id", metric]])
     if metric == "team_size":
         filter_sql, params = period_filter(date_col, freq_word, period)
         stats_rel = hierarchy_stats(
@@ -142,7 +143,7 @@ def _compute_metric_for_period(
         )
         sdf = stats_rel.df()
         out = sdf.rename(columns={"manager_id": "employee_id"})
-        return out[["employee_id", "team_size"]]
+        return cast("pd.DataFrame", out[["employee_id", "team_size"]])
     raise ValueError(f"unknown metric: {metric!r}")
 
 
@@ -181,7 +182,7 @@ class _QueryPrimitives:
         n_periods, _ = self._parse_lookback(lookback)
         use_periods = p.periods[-n_periods:] if len(p.periods) >= n_periods else p.periods
 
-        rows: list[dict] = []
+        rows: list[dict[str, Any]] = []
         prev: float | None = None
         for period in use_periods:
             df = _compute_metric_for_period(
@@ -217,7 +218,7 @@ class _QueryPrimitives:
         metric: str,
         period_t: str,
         period_t1: str,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Single point diff between two periods for one employee.
 
         Returns
@@ -324,7 +325,7 @@ class _QueryPrimitives:
             return pd.DataFrame(columns=["rank", "employee_id", "value"])
         df = df.sort_values(metric, ascending=False).head(top_n).reset_index(drop=True)
         df.insert(0, "rank", range(1, len(df) + 1))
-        df = df.rename(columns={metric: "value"})
+        df = cast("pd.DataFrame", df.rename(columns={metric: "value"}))
         return df
 
     # ── 2. Hierarchy-change primitives ──────────────────────────────────
@@ -344,7 +345,7 @@ class _QueryPrimitives:
         p = self._p
         if not p._loaded:
             raise RuntimeError("call load_snapshots() first")
-        return p.con.sql(f"""
+        return cast("DuckDBPyRelation", p.con.sql(f"""
             SELECT t1."{p._emp_col}" AS employee_id,
                    t1."{p._sup_col}" AS supervisor_id
             FROM (
@@ -362,7 +363,7 @@ class _QueryPrimitives:
               ON t1."{p._emp_col}" = t0."{p._emp_col}"
             WHERE t0."{p._sup_col}" IS NULL
                OR t0."{p._sup_col}" != t1."{p._sup_col}"
-        """)
+        """))
 
     def edges_removed(
         self,
@@ -379,7 +380,7 @@ class _QueryPrimitives:
         p = self._p
         if not p._loaded:
             raise RuntimeError("call load_snapshots() first")
-        return p.con.sql(f"""
+        return cast("DuckDBPyRelation", p.con.sql(f"""
             SELECT t0."{p._emp_col}" AS employee_id,
                    t0."{p._sup_col}" AS supervisor_id_at_t
             FROM (
@@ -396,13 +397,13 @@ class _QueryPrimitives:
             ) t1
               ON t0."{p._emp_col}" = t1."{p._emp_col}"
             WHERE t1."{p._emp_col}" IS NULL
-        """)
+        """))
 
     def node_set_diff(
         self,
         period_t: str,
         period_t1: str,
-    ) -> dict:
+    ) -> dict[str, pd.DataFrame]:
         """Employees who joined or left between two periods.
 
         Returns
@@ -469,7 +470,8 @@ class _QueryPrimitives:
                 merged[t1c] = merged[t1c].fillna(0).astype(int)
         merged["delta"] = merged.get("direct_reports_t1", 0) - merged.get("direct_reports_t", 0)
         merged["total_delta"] = merged.get("total_reports_t1", 0) - merged.get("total_reports_t", 0)
-        return merged.sort_values("delta", key=abs, ascending=False).reset_index(drop=True)
+        sorted_df = merged.sort_values("delta", key=abs, ascending=False).reset_index(drop=True)
+        return cast("pd.DataFrame", sorted_df)
 
     # ── 3. Subtree / team primitives ─────────────────────────────────────
 
@@ -527,7 +529,7 @@ class _QueryPrimitives:
         SELECT '{manager_id}' AS manager_id, employee_id, depth, path
         FROM chain
         """
-        return p.con.sql(sql)
+        return cast("DuckDBPyRelation", p.con.sql(sql))
 
     def subtree_size_at(
         self,
@@ -536,7 +538,8 @@ class _QueryPrimitives:
     ) -> int:
         """Just the count of transitive descendants at a period."""
         rel = self.subtree_at(manager_id, period)
-        return int(rel.count("*").fetchone()[0])
+        row = rel.count("*").fetchone()
+        return int(0 if row is None else row[0])
 
     def subtree_growth(
         self,
@@ -556,7 +559,7 @@ class _QueryPrimitives:
         n_periods, _ = self._parse_lookback(lookback)
         use_periods = p.periods[-n_periods:] if len(p.periods) >= n_periods else p.periods
 
-        rows: list[dict] = []
+        rows: list[dict[str, Any]] = []
         prev = None
         for period in use_periods:
             size = self.subtree_size_at(manager_id, period)
@@ -570,7 +573,7 @@ class _QueryPrimitives:
         manager_a: Any,
         manager_b: Any,
         period: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Shared descendants between two managers at a period.
 
         Returns
@@ -641,7 +644,7 @@ class _QueryPrimitives:
             merged["delta"] / merged["value_t"] * 100,
             np.nan,
         )
-        return merged.sort_values("delta", key=abs, ascending=False).reset_index(drop=True)
+        return cast("pd.DataFrame", merged.sort_values("delta", key=abs, ascending=False).reset_index(drop=True))
 
     def new_centers(
         self,
@@ -666,7 +669,7 @@ class _QueryPrimitives:
         top_t1 = set(dt_t1["employee_id"].tolist())
         new_entrants = top_t1 - top_t
         result = dt[dt["employee_id"].isin(new_entrants)].copy()
-        return result.sort_values("delta", ascending=False).head(top_n).reset_index(drop=True)
+        return cast("pd.DataFrame", result.sort_values("delta", ascending=False).head(top_n).reset_index(drop=True))
 
     def fallen_centers(
         self,
@@ -683,7 +686,7 @@ class _QueryPrimitives:
         top_t1 = set(dt_t1["employee_id"].tolist())
         fallers = top_t - top_t1
         result = dt[dt["employee_id"].isin(fallers)].copy()
-        return result.sort_values("delta").head(top_n).reset_index(drop=True)
+        return cast("pd.DataFrame", result.sort_values("delta").head(top_n).reset_index(drop=True))
 
     def cohort_compare(
         self,
@@ -749,7 +752,7 @@ class _QueryPrimitives:
             merged["delta"] / merged["value_t"] * 100,
             np.nan,
         )
-        return merged.sort_values("delta", key=abs, ascending=False).reset_index(drop=True)
+        return cast("pd.DataFrame", merged.sort_values("delta", key=abs, ascending=False).reset_index(drop=True))
 
     # ── 5. Time-window aggregate primitives ─────────────────────────────
 
@@ -771,7 +774,7 @@ class _QueryPrimitives:
         n_periods, _ = self._parse_lookback(lookback)
         use_periods = p.periods[-n_periods:] if len(p.periods) >= n_periods else p.periods
 
-        rows: list[dict] = []
+        rows: list[dict[str, Any]] = []
         for period in use_periods:
             df = _compute_metric_for_period(
                 p.con, p._table_name, p._emp_col, p._sup_col, p._date_col,
@@ -793,7 +796,7 @@ class _QueryPrimitives:
         metric: str,
         lookback: str = "4Q",
         aggregate: str = "mean",
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Linear slope of the org-wide aggregate across the window.
 
         Parameters
@@ -870,7 +873,7 @@ class _QueryPrimitives:
         n_periods, _ = self._parse_lookback(lookback)
         use_periods = p.periods[-n_periods:] if len(p.periods) >= n_periods else p.periods
 
-        rows: list[dict] = []
+        rows: list[dict[str, Any]] = []
         for period in use_periods:
             df = _compute_metric_for_period(
                 p.con, p._table_name, p._emp_col, p._sup_col, p._date_col,
@@ -928,7 +931,7 @@ class _QueryPrimitives:
             "mean_value": wide.mean(axis=1).values,
             "n_periods": wide.notna().sum(axis=1).values,
         }).reset_index(drop=True)
-        return result.sort_values("std_value", ascending=False).reset_index(drop=True)
+        return cast("pd.DataFrame", result.sort_values("std_value", ascending=False).reset_index(drop=True))
 
     # ── Helper exposed so callers can use the same parser ────────────────
 

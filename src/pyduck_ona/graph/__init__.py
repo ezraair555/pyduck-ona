@@ -38,6 +38,8 @@ from typing import TYPE_CHECKING, Any, Literal
 import duckdb
 
 if TYPE_CHECKING:
+    import networkx as nx
+    import pandas as pd
     from duckdb import DuckDBPyRelation
 
 
@@ -72,7 +74,7 @@ def _edges_arrow(
     edges: DuckDBPyRelation,
     source_col: str,
     target_col: str,
-) -> tuple[list, list]:
+) -> tuple[list[Any], list[Any]]:
     """Materialize the edge relation to (source_list, target_list).
 
     DuckDB 1.3+ returns a streaming ``RecordBatchReader`` from
@@ -87,20 +89,24 @@ def _edges_arrow(
     )
 
 
-def _nx_digraph(edges: DuckDBPyRelation, source_col: str, target_col: str):
+def _nx_digraph(
+    edges: DuckDBPyRelation,
+    source_col: str,
+    target_col: str,
+) -> nx.DiGraph[Any]:
     """Build a NetworkX DiGraph from an edge relation."""
     import networkx as nx
 
     src, tgt = _edges_arrow(edges, source_col, target_col)
     # Drop rows where either endpoint is NULL before building the graph.
     pairs = [(s, t) for s, t in zip(src, tgt, strict=False) if s is not None and t is not None]
-    graph = nx.DiGraph()
+    graph: nx.DiGraph[Any] = nx.DiGraph()
     graph.add_edges_from(pairs)
     return graph
 
 
 def _wrap_as_relation(
-    df,
+    df: pd.DataFrame,
     con: duckdb.DuckDBPyConnection | None = None,
 ) -> DuckDBPyRelation:
     """Round-trip a pandas DataFrame through DuckDB to get a relation.

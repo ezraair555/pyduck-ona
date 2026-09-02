@@ -26,9 +26,6 @@ jobs:
   typecheck:
     name: typecheck (mypy)
     runs-on: ubuntu-latest
-    # Strict typing is a goal but not gating yet. Remove continue-on-error
-    # once `mypy src/pyduck_ona` is clean.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
