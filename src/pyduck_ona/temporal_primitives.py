@@ -153,7 +153,11 @@ class _QueryPrimitives:
 
     def __init__(self, parent: Any) -> None:
         self._p = parent  # the DuckONATemporal instance
-        self._freq_word = _FREQ_WORD_MAP.get(getattr(parent, "freq", "M"), "month")
+
+    @property
+    def _freq_word(self) -> str:
+        """SQL date-truncation word matching the parent's snapshot frequency."""
+        return _FREQ_WORD_MAP.get(getattr(self._p, "freq", "M"), "month")
 
     # ── 1. Trajectory primitives ──────────────────────────────────────────
 

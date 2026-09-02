@@ -275,3 +275,60 @@ class TestEdgeCases:
         # but should be a small number (the effect is localized)
         assert isinstance(wt["slope"], float)
         assert abs(wt["slope"]) < 1.0  # bounded effect
+
+
+# ─── 6. Frequency-respecting regression tests ───────────────────────────
+
+
+class TestFrequencyRespectingPrimitives:
+    """Quarter-end / year-end snapshots must not return empty results."""
+
+    @staticmethod
+    def _load(freq: str, dates: list[str]) -> DuckONATemporal:
+        rows = [
+            {"employee_id": "ROOT", "supervisor_id": None, "snapshot_date": d, "job_level": 5}
+            for d in dates
+        ]
+        for emp_id in ("E001", "E002", "E003"):
+            for d in dates:
+                rows.append(
+                    {
+                        "employee_id": emp_id,
+                        "supervisor_id": "ROOT",
+                        "snapshot_date": d,
+                        "job_level": 2,
+                    }
+                )
+        dt = DuckONATemporal()
+        dt.load_snapshots(pd.DataFrame(rows), snapshot_date_col="snapshot_date", freq=freq)
+        return dt
+
+    def test_quarter_end_snapshots_hierarchy_drift(self) -> None:
+        dt = self._load("Q", ["2026-03-31", "2026-06-30"])
+        hd = dt.q.hierarchy_drift(dt.periods[0], dt.periods[-1])
+        assert not hd.empty
+        assert "ROOT" in hd["manager_id"].values
+
+    def test_quarter_end_snapshots_subtree(self) -> None:
+        dt = self._load("Q", ["2026-03-31", "2026-06-30"])
+        df = dt.q.subtree_at("ROOT", dt.periods[-1]).df()
+        assert len(df) > 0
+
+    def test_year_end_snapshots_hierarchy_drift(self) -> None:
+        dt = self._load("Y", ["2025-12-31", "2026-12-31"])
+        hd = dt.q.hierarchy_drift(dt.periods[0], dt.periods[-1])
+        assert not hd.empty
+        assert "ROOT" in hd["manager_id"].values
+
+    def test_year_end_snapshots_subtree(self) -> None:
+        dt = self._load("Y", ["2025-12-31", "2026-12-31"])
+        df = dt.q.subtree_at("ROOT", dt.periods[-1]).df()
+        assert len(df) > 0
+
+    def test_year_end_snapshots_hierarchy_drift_non_empty(self) -> None:
+        """Stable year-end org: hierarchy_drift must still return all managers."""
+        dt = self._load("Y", ["2025-12-31", "2026-12-31"])
+        hd = dt.q.hierarchy_drift(dt.periods[0], dt.periods[-1])
+        assert not hd.empty
+        assert "ROOT" in hd["manager_id"].values
+
