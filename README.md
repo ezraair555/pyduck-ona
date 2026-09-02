@@ -166,6 +166,137 @@ result = (
 keys to `entity_id`, and exposes the five verb families (`prep_*`, `graph_*`,
 `temporal_*`, `model_*`, `report_*`).
 
+## API catalog
+
+Every public function and class has a dedicated page in `docs/api/` with full
+parameters, return types, and runnable examples. Click any link below to jump
+to its reference page. Pages are regenerated from source docstrings by
+`python scripts/generate_api_docs.py`.
+
+### DuckONAFrame (v0.3)
+
+| Function / Class | Description |
+|---|---|
+| [`DuckONAFrame`](docs/api/duckonaframe.md) | A relation-first, uniform-verb façade over pyduck-ona analytics |
+| [`DuckONAFrame.graph_betweenness`](docs/api/duckonaframe_graph_betweenness.md) | Compute betweenness centrality on the direct-edge relation |
+| [`DuckONAFrame.graph_pagerank`](docs/api/duckonaframe_graph_pagerank.md) | Compute PageRank on the direct-edge relation |
+| [`DuckONAFrame.model_ols`](docs/api/duckonaframe_model_ols.md) | Fit an OLS model via broom_sm |
+| [`DuckONAFrame.pipeline`](docs/api/duckonaframe_pipeline.md) | Compose a sequence of frame verbs into a single workflow |
+| [`DuckONAFrame.prep_load_snapshots`](docs/api/duckonaframe_prep_load_snapshots.md) | Load snapshot data and wire up a temporal engine on this frame |
+| [`DuckONAFrame.prep_long`](docs/api/duckonaframe_prep_long.md) | Return a long-form transitive closure of the reporting chain |
+| [`DuckONAFrame.prep_validate`](docs/api/duckonaframe_prep_validate.md) | Validate hierarchy integrity |
+| [`DuckONAFrame.prep_wide`](docs/api/duckonaframe_prep_wide.md) | Return a wide-form ancestor table (Level_1, Level_2, ...) |
+| [`DuckONAFrame.relation`](docs/api/duckonaframe_relation.md) | Return the current source relation |
+| [`DuckONAFrame.report_export`](docs/api/duckonaframe_report_export.md) | Register the current (or supplied) relation as a named table |
+| [`DuckONAFrame.temporal_metrics`](docs/api/duckonaframe_temporal_metrics.md) | Compute temporal ONA metrics across loaded snapshots |
+
+### DuckONA class
+
+| Function / Class | Description |
+|---|---|
+| [`DuckONA`](docs/api/duckona.md) | A DuckDB-backed workspace for HR analytics |
+| [`DuckONA.anova`](docs/api/duckona_anova.md) | One-way ANOVA; delegates to `pyduck_ona.stats.anova` |
+| [`DuckONA.betweenness`](docs/api/duckona_betweenness.md) | Betweenness centrality via `pyduck_ona.graph.betweenness` |
+| [`DuckONA.build_org_edges`](docs/api/duckona_build_org_edges.md) | Build a directed edge relation from the HRIS hierarchy |
+| [`DuckONA.build_temporal_slices`](docs/api/duckona_build_temporal_slices.md) | Return time-sliced relations for a registered table |
+| [`DuckONA.chi_square`](docs/api/duckona_chi_square.md) | Chi-square test; delegates to `pyduck_ona.stats.chi_square` |
+| [`DuckONA.connected_components`](docs/api/duckona_connected_components.md) | Weakly-connected components via `pyduck_ona.graph.connected_components` |
+| [`DuckONA.correlation`](docs/api/duckona_correlation.md) | Correlation helper; delegates to `pyduck_ona.stats.correlation` |
+| [`DuckONA.deduplicate`](docs/api/duckona_deduplicate.md) | Deduplicate an HR DataFrame by `(id_col, date_col)` |
+| [`DuckONA.degree_centrality`](docs/api/duckona_degree_centrality.md) | Degree centrality via `pyduck_ona.graph.degree_centrality` |
+| [`DuckONA.eigenvector_centrality`](docs/api/duckona_eigenvector_centrality.md) | Eigenvector centrality via `pyduck_ona.graph.eigenvector_centrality` |
+| [`DuckONA.filter_noise`](docs/api/duckona_filter_noise.md) | Filter noise from an HR DataFrame |
+| [`DuckONA.join_hris`](docs/api/duckona_join_hris.md) | Join a metric relation back to the HRIS demographics table |
+| [`DuckONA.load_attendance`](docs/api/duckona_load_attendance.md) | Load an office-attendance / presence table |
+| [`DuckONA.load_compensation`](docs/api/duckona_load_compensation.md) | Load a compensation table with one row per employee per snapshot |
+| [`DuckONA.load_hris`](docs/api/duckona_load_hris.md) | Load the HRIS snapshot |
+| [`DuckONA.load_promotions`](docs/api/duckona_load_promotions.md) | Load a promotion / internal-mobility table |
+| [`DuckONA.load_retirement`](docs/api/duckona_load_retirement.md) | Load a retirement-eligibility or retirement-planning table |
+| [`DuckONA.load_skills`](docs/api/duckona_load_skills.md) | Load a skills / proficiency table |
+| [`DuckONA.load_survey`](docs/api/duckona_load_survey.md) | Load an engagement / survey-results table |
+| [`DuckONA.load_turnover`](docs/api/duckona_load_turnover.md) | Load a turnover / termination table |
+| [`DuckONA.logistic`](docs/api/duckona_logistic.md) | Logistic regression; delegates to `pyduck_ona.stats.logistic` |
+| [`DuckONA.louvain_communities`](docs/api/duckona_louvain_communities.md) | Louvain community detection via `pyduck_ona.graph.louvain_communities` |
+| [`DuckONA.model_compare`](docs/api/duckona_model_compare.md) | Model comparison; delegates to `pyduck_ona.stats.model_compare` |
+| [`DuckONA.mrqap`](docs/api/duckona_mrqap.md) | Small pure-Python MRQAP-style permutation test for matrix regression |
+| [`DuckONA.ols`](docs/api/duckona_ols.md) | OLS linear regression; delegates to `pyduck_ona.stats.ols` |
+| [`DuckONA.pagerank`](docs/api/duckona_pagerank.md) | PageRank centrality via `pyduck_ona.graph.pagerank` |
+| [`DuckONA.predict_engagement`](docs/api/duckona_predict_engagement.md) | Predict engagement scores based on demographics and ONA metrics |
+| [`DuckONA.profile_clusters`](docs/api/duckona_profile_clusters.md) | Cluster employee profiles from HR attributes and optional network features |
+| [`DuckONA.sql`](docs/api/duckona_sql.md) | Run arbitrary SQL on the owned connection |
+| [`DuckONA.table`](docs/api/duckona_table.md) | Return a relation for a registered table |
+| [`DuckONA.validate_keys`](docs/api/duckona_validate_keys.md) | Validate HR table keys: non-null IDs, no duplicate snapshots, sensible dates |
+| [`DuckONA.vif`](docs/api/duckona_vif.md) | Variance-inflation factors; delegates to `pyduck_ona.stats.vif` |
+
+### DuckONATemporal class
+
+| Function / Class | Description |
+|---|---|
+| [`DuckONATemporal`](docs/api/duckonatemporal.md) | A DuckDB-backed temporal ONA workspace |
+| [`DuckONATemporal.career_markov_forecast`](docs/api/duckonatemporal_career_markov_forecast.md) | Forecast future state probabilities for one employee via Markov transitions |
+| [`DuckONATemporal.career_markov_matrix`](docs/api/duckonatemporal_career_markov_matrix.md) | Estimate career-transition Markov probabilities from snapshot history |
+| [`DuckONATemporal.career_trajectory`](docs/api/duckonatemporal_career_trajectory.md) | Per-employee career path across periods |
+| [`DuckONATemporal.change_detection`](docs/api/duckonatemporal_change_detection.md) | Top movers for a given metric over the lookback window |
+| [`DuckONATemporal.compute_temporal_metrics`](docs/api/duckonatemporal_compute_temporal_metrics.md) | Per-employee ONA metric time-series across all periods |
+| [`DuckONATemporal.event_window`](docs/api/duckonatemporal_event_window.md) | Before/after comparison around a specific event date |
+| [`DuckONATemporal.load_promotions`](docs/api/duckonatemporal_load_promotions.md) | Load a promotions / internal-mobility event table |
+| [`DuckONATemporal.load_snapshots`](docs/api/duckonatemporal_load_snapshots.md) | Load HRIS snapshot data |
+| [`DuckONATemporal.load_survey`](docs/api/duckonatemporal_load_survey.md) | Load a survey / engagement table with employee_id + snapshot_date |
+| [`DuckONATemporal.manager_chain`](docs/api/duckonatemporal_manager_chain.md) | Managers along the way for a given employee |
+| [`DuckONATemporal.manager_effectiveness`](docs/api/duckonatemporal_manager_effectiveness.md) | Composite manager effectiveness score |
+| [`DuckONATemporal.mobility_anomaly`](docs/api/duckonatemporal_mobility_anomaly.md) | Peer-relative stuckness z-score per employee |
+| [`DuckONATemporal.mobility_leaderboard`](docs/api/duckonatemporal_mobility_leaderboard.md) | Top movers by composite mobility score |
+| [`DuckONATemporal.network_evolution`](docs/api/duckonatemporal_network_evolution.md) | Aggregate network-shape metrics per period |
+| [`DuckONATemporal.org_design_change_alerts`](docs/api/duckonatemporal_org_design_change_alerts.md) | Flag periods with potentially unhealthy organizational-design shifts |
+| [`DuckONATemporal.org_design_scorecard`](docs/api/duckonatemporal_org_design_scorecard.md) | Per-period organizational design metrics and a composite score |
+| [`DuckONATemporal.sql`](docs/api/duckonatemporal_sql.md) | Run arbitrary SQL on the owned connection |
+
+### Hierarchy primitives
+
+| Function / Class | Description |
+|---|---|
+| [`hierarchy_long`](docs/api/hierarchy_long.md) | Unroll the org tree into long format via a recursive CTE |
+| [`hierarchy_stats`](docs/api/hierarchy_stats.md) | Calculate span-of-control metrics for every manager |
+| [`hierarchy_valid`](docs/api/hierarchy_valid.md) | Diagnose the integrity of an organizational reporting structure |
+| [`hierarchy_wide`](docs/api/hierarchy_wide.md) | Flatten the reporting chain into a single row per employee |
+
+### Graph metrics
+
+| Function / Class | Description |
+|---|---|
+| [`betweenness`](docs/api/betweenness.md) | Betweenness centrality for every node (broker detection) |
+| [`connected_components`](docs/api/connected_components.md) | Weakly-connected components in the edge graph |
+| [`degree_centrality`](docs/api/degree_centrality.md) | Degree centrality for every node |
+| [`eigenvector_centrality`](docs/api/eigenvector_centrality.md) | Eigenvector centrality for every node |
+| [`louvain_communities`](docs/api/louvain_communities.md) | Louvain community detection on the edge graph |
+| [`pagerank`](docs/api/pagerank.md) | PageRank centrality (influence scoring) |
+| [`shortest_path`](docs/api/shortest_path.md) | Shortest path between two nodes in the edge graph |
+
+### Statistical modeling
+
+| Function / Class | Description |
+|---|---|
+| [`anova`](docs/api/anova.md) | One-way ANOVA via OLS, tidy output |
+| [`chi_square`](docs/api/chi_square.md) | Chi-square test of independence between two categorical variables |
+| [`correlation`](docs/api/correlation.md) | Pairwise correlations across a set of columns |
+| [`logistic`](docs/api/logistic.md) | Fit a logistic regression. Returns (tidy, glance) |
+| [`model_compare_stats`](docs/api/model_compare_stats.md) | Side-by-side comparison of multiple fitted models |
+| [`ols`](docs/api/ols.md) | Fit an OLS linear regression. Returns (tidy, glance) |
+| [`plot_coefficients`](docs/api/plot_coefficients.md) | Forest plot of regression coefficients with confidence intervals |
+| [`plot_ols`](docs/api/plot_ols.md) | Per-predictor OLS scatterplots with fitted regression line |
+| [`plot_residuals`](docs/api/plot_residuals.md) | Residual-diagnostic plots for each predictor |
+| [`save_figure`](docs/api/save_figure.md) | Save a matplotlib figure and return the path |
+| [`tidy_to_duckdb`](docs/api/tidy_to_duckdb.md) | Write a tidy model result into a DuckDB table |
+| [`to_duckdb`](docs/api/to_duckdb.md) | Register a DataFrame or relation as a DuckDB table |
+| [`vif`](docs/api/vif.md) | Variance Inflation Factors for the predictors in a formula |
+
+### Graph export
+
+| Function / Class | Description |
+|---|---|
+| [`to_igraph`](docs/api/to_igraph.md) | Convert an edge relation into an igraph.Graph via Arrow |
+| [`to_networkx`](docs/api/to_networkx.md) | Convert an edge relation into a NetworkX graph via Arrow |
+
 ## Short aliases (optional)
 
 For convenience, the four hierarchy functions are also available as

@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Profile clustering (`profile_clusters`) on `DuckONA` with optional network features and k-means / GMM.
 - Organizational-design analytics (`org_design_scorecard`, `org_design_change_alerts`) on `DuckONATemporal`.
 - Regression tests for quarter-end and year-end snapshot frequencies in `q.*` temporal primitives.
+- README now contains a full API catalog with links to 89 per-function reference pages under `docs/api/`.
+- `scripts/generate_api_docs.py` auto-generates `docs/api/*.md` pages from live docstrings and signatures.
 
 ### Fixed
 - Temporal primitives now respect the parent `DuckONATemporal.freq` setting instead of hard-coding `date_trunc('month', ...)`, which caused empty results for quarterly and yearly snapshots.
