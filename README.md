@@ -188,7 +188,21 @@ to its reference page. Pages are regenerated from source docstrings by
 | [`DuckONAFrame.prep_wide`](docs/api/duckonaframe_prep_wide.md) | Return a wide-form ancestor table (Level_1, Level_2, ...) |
 | [`DuckONAFrame.relation`](docs/api/duckonaframe_relation.md) | Return the current source relation |
 | [`DuckONAFrame.report_export`](docs/api/duckonaframe_report_export.md) | Register the current (or supplied) relation as a named table |
+| [`DuckONAFrame.search_similar`](docs/api/duckonaframe_search_similar.md) | Approximate nearest-neighbor search over an embedding column |
+| [`DuckONAFrame.search_text`](docs/api/duckonaframe_search_text.md) | Full-text search over a text column in the current relation |
 | [`DuckONAFrame.temporal_metrics`](docs/api/duckonaframe_temporal_metrics.md) | Compute temporal ONA metrics across loaded snapshots |
+
+### Search
+
+| Function / Class | Description |
+|---|---|
+| [`build_fts_index`](docs/api/build_fts_index.md) | Create a DuckDB full-text search index on an HR text table |
+| [`drop_fts_index`](docs/api/drop_fts_index.md) | Drop a DuckDB FTS index for ``table_name`` |
+| [`text_search`](docs/api/text_search.md) | Full-text search an HR table and return the top-k matches |
+| [`build_vector_index`](docs/api/build_vector_index.md) | Create an HNSW index on a fixed-size ``ARRAY`` embedding column |
+| [`drop_vector_index`](docs/api/drop_vector_index.md) | Drop an HNSW index created by :func:`build_vector_index` |
+| [`vector_search`](docs/api/vector_search.md) | Approximate nearest-neighbor search over an embedding column |
+| [`fuzzy_join_vectors`](docs/api/fuzzy_join_vectors.md) | Approximate nearest-neighbor join between two embedding tables |
 
 ### DuckONA class
 

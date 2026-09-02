@@ -38,6 +38,15 @@ from pyduck_ona.graph import (
     pagerank,
     shortest_path,
 )
+from pyduck_ona.search import (
+    build_fts_index,
+    build_vector_index,
+    drop_fts_index,
+    drop_vector_index,
+    fuzzy_join_vectors,
+    text_search,
+    vector_search,
+)
 from pyduck_ona.temporal import DuckONATemporal
 
 # Re-export the public stats functions at the top level. The full set
@@ -87,5 +96,12 @@ __all__ = [
     "tidy_to_duckdb",
     "to_duckdb",
     "save_figure",
+    "build_fts_index",
+    "drop_fts_index",
+    "text_search",
+    "build_vector_index",
+    "drop_vector_index",
+    "vector_search",
+    "fuzzy_join_vectors",
     "__version__",
 ]

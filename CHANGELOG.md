@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Regression tests for quarter-end and year-end snapshot frequencies in `q.*` temporal primitives.
 - README now contains a full API catalog with links to 89 per-function reference pages under `docs/api/`.
 - `scripts/generate_api_docs.py` auto-generates `docs/api/*.md` pages from live docstrings and signatures.
+- Full-text search (`fts`) and vector similarity search (`vss`) helpers:
+  - `text_search`, `build_fts_index`, `drop_fts_index`
+  - `vector_search`, `build_vector_index`, `drop_vector_index`
+  - `fuzzy_join_vectors`
+  - `DuckONAFrame.search_text` and `DuckONAFrame.search_similar` v0.3 verbs.
 
 ### Fixed
 - Temporal primitives now respect the parent `DuckONATemporal.freq` setting instead of hard-coding `date_trunc('month', ...)`, which caused empty results for quarterly and yearly snapshots.

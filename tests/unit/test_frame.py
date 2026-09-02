@@ -98,3 +98,77 @@ class TestFramePipeline:
         frame = DuckONAFrame.from_pandas(flat_org, "hris")
         with pytest.raises(TypeError):
             frame.pipeline([lambda f: f.graph_pagerank()])
+
+
+class TestFrameSearch:
+    def test_search_text(self) -> None:
+        df = pd.DataFrame(
+            {
+                "employee_id": ["E1", "E2", "E3"],
+                "bio": [
+                    "data scientist with python",
+                    "hr business partner",
+                    "python engineer",
+                ],
+            }
+        )
+        frame = DuckONAFrame.from_pandas(df, "hris")
+        rel = frame.search_text("python", text_col="bio", id_col="employee_id", k=5)
+        rows = rel.df()
+        assert len(rows) == 2
+        assert "entity_id" in rows.columns
+        assert {"E1", "E3"}.issubset(set(rows["entity_id"]))
+
+    def test_search_text_output_returns_frame(self) -> None:
+        df = pd.DataFrame(
+            {
+                "employee_id": ["E1", "E2"],
+                "bio": ["python developer", "sales leader"],
+            }
+        )
+        frame = DuckONAFrame.from_pandas(df, "hris")
+        result = frame.search_text(
+            "python", text_col="bio", id_col="employee_id", output="matches"
+        )
+        assert isinstance(result, DuckONAFrame)
+        assert result.source == "matches"
+
+    def test_search_similar(self) -> None:
+        df = pd.DataFrame(
+            {
+                "employee_id": ["E1", "E2", "E3"],
+                "embedding": [
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.9, 0.1, 0.0],
+                ],
+            }
+        )
+        frame = DuckONAFrame.from_pandas(df, "skills")
+        rel = frame.search_similar(
+            [1.0, 0.0, 0.0],
+            vector_col="embedding",
+            id_col="employee_id",
+            k=2,
+        )
+        rows = rel.df()
+        assert len(rows) == 2
+        assert rows.iloc[0]["entity_id"] == "E1"
+        assert "distance" in rows.columns
+
+    def test_search_similar_output_returns_frame(self) -> None:
+        df = pd.DataFrame(
+            {
+                "employee_id": ["E1", "E2"],
+                "embedding": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            }
+        )
+        frame = DuckONAFrame.from_pandas(df, "skills")
+        result = frame.search_similar(
+            [1.0, 0.0, 0.0],
+            vector_col="embedding",
+            id_col="employee_id",
+            output="neighbors",
+        )
+        assert isinstance(result, DuckONAFrame)
+        assert result.source == "neighbors"

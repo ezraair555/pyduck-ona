@@ -16,14 +16,17 @@ The façade is additive: it does not replace ``DuckONA`` or
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING, Any
 
 import duckdb
 
 from pyduck_ona import graph as _graph
+from pyduck_ona import search as _search
 from pyduck_ona import stats as _stats
 from pyduck_ona import temporal as _temporal
 from pyduck_ona.core import hierarchy_long, hierarchy_valid, hierarchy_wide
+from pyduck_ona.sql_builder import quote_identifier
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -113,6 +116,16 @@ class DuckONAFrame:
             ", " + ", ".join(f'"{c}"' for c in cols) if cols else ""
         )
         return rel.project(select_list)
+
+    def _snapshot_to_table(self) -> str:
+        """Materialize the current source relation as a temp table."""
+        if self.source is None:
+            raise RuntimeError(
+                "No source table is set. Use a prep_load_* method first."
+            )
+        tmp = f"__frame_{uuid.uuid4().hex}"
+        self.con.execute(f"CREATE OR REPLACE TABLE {tmp} AS SELECT * FROM {self.source}")
+        return tmp
 
     # ─── 1. prep_* — data preparation and validation ──────────────────────
 
@@ -261,6 +274,67 @@ class DuckONAFrame:
         """Register the current (or supplied) relation as a named table."""
         src = rel if rel is not None else self.relation()
         return self._emit(src, as_pandas=False, output=table_name)  # type: ignore[return-value]
+
+    # ─── 6. search_* — text and vector search ────────────────────────────
+
+    def search_text(
+        self,
+        query: str,
+        text_col: str = "bio",
+        *,
+        id_col: str = "employee_id",
+        k: int = 10,
+        output: str | None = None,
+        as_pandas: bool = False,
+    ) -> DuckDBPyRelation | pd.DataFrame | DuckONAFrame:
+        """Full-text search over a text column in the current relation."""
+        tmp = self._snapshot_to_table()
+        rel = _search.text_search(
+            tmp,
+            query,
+            id_col=id_col,
+            text_cols=[text_col],
+            con=self.con,
+            k=k,
+        )
+        rel = self._canonical(rel, id_col)
+        return self._emit(rel, as_pandas=as_pandas, output=output)
+
+    def search_similar(
+        self,
+        query_vector: list[float],
+        vector_col: str = "embedding",
+        *,
+        id_col: str = "employee_id",
+        k: int = 10,
+        metric: str = "l2sq",
+        output: str | None = None,
+        as_pandas: bool = False,
+    ) -> DuckDBPyRelation | pd.DataFrame | DuckONAFrame:
+        """Approximate nearest-neighbor search over an embedding column."""
+        tmp = self._snapshot_to_table()
+        q_vec = quote_identifier(vector_col)
+        # DuckDB HNSW indexes require FLOAT[N]; pandas lists often become DOUBLE[N].
+        type_row = self.con.sql(
+            f"SELECT typeof({q_vec}) FROM {tmp} LIMIT 1"
+        ).fetchone()
+        if type_row is not None and "DOUBLE" in str(type_row[0]):
+            dim_row = self.con.sql(f"SELECT len({q_vec}) FROM {tmp} LIMIT 1").fetchone()
+            dim = int(dim_row[0]) if dim_row else 0
+            self.con.execute(
+                f"ALTER TABLE {tmp} ALTER {q_vec} SET DATA TYPE FLOAT[{dim}];"
+            )
+        rel = _search.vector_search(
+            tmp,
+            query_vector,
+            id_col=id_col,
+            vector_col=vector_col,
+            con=self.con,
+            k=k,
+            metric=metric,
+        )
+        rel = self._canonical(rel, id_col)
+        return self._emit(rel, as_pandas=as_pandas, output=output)
 
     # ─── Pipeline combinator ──────────────────────────────────────────────
 
