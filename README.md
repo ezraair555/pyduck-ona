@@ -79,7 +79,7 @@ ona = pona.DuckONA.from_janitor(dj, hris_table="hris")
 issues = pona.hierarchy_valid(ona.table("hris"), "employee_id", "supervisor_id")
 ```
 
-## Golden flow: from raw HRIS to org-design insights
+## Golden flow: from raw HRIS to org-design insights (classic API)
 
 ```python
 import pandas as pd
@@ -132,6 +132,39 @@ forecast = dt.career_markov_forecast("IC1", horizon=2, state_col="job_level")
 scorecard = dt.org_design_scorecard(lookback="2Q")
 alerts = dt.org_design_change_alerts(lookback="2Q")
 ```
+
+
+## DuckONAFrame (v0.3 contract)
+
+For a unified, chainable API that hides the return-type differences
+between functions, use the new `DuckONAFrame` façade:
+
+```python
+import pandas as pd
+import pyduck_ona as pona
+
+hris = pd.DataFrame({
+    "employee_id": ["CEO", "VP1", "M1", "IC1"],
+    "supervisor_id": [None, "CEO", "VP1", "M1"],
+    "department": ["Exec", "Sales", "Sales", "Sales"],
+    "job_level": [7, 6, 5, 3],
+})
+
+result = (
+    pona.DuckONAFrame.from_pandas(hris, "hris")
+    .pipeline([
+        lambda f: f.graph_pagerank(output="pr"),
+        lambda f: f.graph_betweenness(output="bc"),
+        lambda f: f.report_export("scores"),
+    ])
+)
+
+# result.relation() is a DuckDBPyRelation with canonical entity_id
+```
+
+`DuckONAFrame` returns `DuckDBPyRelation` by default, renames employee/node
+keys to `entity_id`, and exposes the five verb families (`prep_*`, `graph_*`,
+`temporal_*`, `model_*`, `report_*`).
 
 ## Short aliases (optional)
 

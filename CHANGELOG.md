@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `DuckONAFrame` v0.3 façade in `src/pyduck_ona/frame.py`: relation-first verbs with `as_pandas=True` materialization, `output=<name>` chaining, and canonical `entity_id`. Includes `pipeline()` combinator, `from_pandas`, `from_janitor`, and representatives from all five verb families.
 - `DuckONA.from_janitor(...)` bridge for `pyduck-janitor` integration and a draft v0.3 API contract in `docs/v0.3_api_contract.md`.
 - Career-path Markov modeling (`career_markov_matrix`, `career_markov_forecast`) on `DuckONATemporal`.
 - Profile clustering (`profile_clusters`) on `DuckONA` with optional network features and k-means / GMM.
