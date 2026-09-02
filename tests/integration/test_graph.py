@@ -19,6 +19,7 @@ from pyduck_ona.core import hierarchy_long
 from pyduck_ona.graph import (
     betweenness,
     connected_components,
+    louvain_communities,
     pagerank,
     shortest_path,
 )
@@ -200,6 +201,23 @@ class TestConnectedComponents:
         result = connected_components(direct, "employee_id", "supervisor_id").df()
         assert len(result) == 2
         assert set(result["size"].tolist()) == {2}
+
+
+class TestLouvain:
+    def test_weighted_louvain_uses_weight_column(self):
+        edges = duckdb.sql("""
+            SELECT * FROM (VALUES
+                ('A', 'B', 3.0),
+                ('B', 'C', 2.0),
+                ('A', 'C', 1.0),
+                ('D', 'E', 4.0)
+            ) t(employee_id, supervisor_id, w)
+        """)
+        result = louvain_communities(
+            edges, "employee_id", "supervisor_id", weight_col="w"
+        ).df()
+        assert set(result.columns) == {"node_id", "community_id"}
+        assert {"A", "B", "C", "D", "E"}.issubset(set(result["node_id"]))
 
 
 # ─── NULL-supervisor handling (P0-3 regression) ───────────────────────────

@@ -492,7 +492,7 @@ def louvain_communities(
         tgt = result.column(target_col).to_pylist()
         wgt = result.column(weight_col).to_pylist()
         G = nx.DiGraph()
-        for s, t, w in zip(src, tgt):
+        for s, t, w in zip(src, tgt, wgt):
             if s is None or t is None:
                 continue
             # Aggregate duplicate edges by summing weights.

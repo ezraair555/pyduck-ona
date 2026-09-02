@@ -139,14 +139,18 @@ def _edges_for_period(
     sup_col: str,
     date_col: str,
     period_label: str,
+    freq: str,
 ) -> "DuckDBPyRelation":
     """Return edge relation (emp, sup) for a single period snapshot."""
+    freq_word = _FREQ_MAP.get(freq.upper())
+    if freq_word is None:
+        raise ValueError(f"freq must be one of {list(_FREQ_MAP)}, got {freq!r}")
     sql = f"""
         SELECT DISTINCT
             {_quote(emp_col)} AS {_quote(emp_col)},
             {_quote(sup_col)} AS {_quote(sup_col)}
         FROM {table}
-        WHERE date_trunc('month', CAST({_quote(date_col)} AS DATE))
+        WHERE date_trunc('{freq_word}', CAST({_quote(date_col)} AS DATE))
               = CAST('{period_label}' AS DATE)
           AND {_quote(sup_col)} IS NOT NULL
           AND CAST({_quote(sup_col)} AS VARCHAR) <> ''
@@ -162,13 +166,17 @@ def _subtree_ids(
     date_col: str,
     manager_id: Any,
     period_label: str,
+    freq: str,
 ) -> list[Any]:
     """Return all employee_ids in manager's transitive subtree for a period."""
+    freq_word = _FREQ_MAP.get(freq.upper())
+    if freq_word is None:
+        raise ValueError(f"freq must be one of {list(_FREQ_MAP)}, got {freq!r}")
     # Get the snapshot rows for this period
     rel = con.sql(f"""
         SELECT {_quote(emp_col)} AS emp, {_quote(sup_col)} AS sup
         FROM {table}
-        WHERE date_trunc('month', CAST({_quote(date_col)} AS DATE))
+        WHERE date_trunc('{freq_word}', CAST({_quote(date_col)} AS DATE))
               = CAST('{period_label}' AS DATE)
     """)
     df = rel.df()
@@ -349,6 +357,7 @@ class DuckONATemporal:
             raise RuntimeError("call load_snapshots() first")
         emp = employee_id_col or self._emp_col
         sup = supervisor_id_col or self._sup_col
+        freq_word = _FREQ_MAP[self._freq]
         if metrics is None:
             metrics = ["betweenness", "pagerank", "degree_centrality", "team_size"]
 
@@ -366,7 +375,7 @@ class DuckONATemporal:
 
         for period in self._periods:
             edges = _edges_for_period(
-                self.con, self._table_name, emp, sup, self._date_col, period
+                self.con, self._table_name, emp, sup, self._date_col, period, self._freq
             )
             n_edges = edges.count("*").fetchone()[0]
             if n_edges == 0:
@@ -379,7 +388,7 @@ class DuckONATemporal:
                         self.con.sql(
                             f"SELECT {emp} AS employee_id, {sup} AS supervisor_id "
                             f"FROM {self._table_name} "
-                            f"WHERE date_trunc('month', CAST({_quote(self._date_col)} AS DATE))"
+                            f"WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))"
                             f"      = CAST('{period}' AS DATE)"
                         ),
                         "employee_id",
@@ -445,18 +454,19 @@ class DuckONATemporal:
             raise RuntimeError("call load_snapshots() first")
         emp = employee_id_col or self._emp_col
         sup = supervisor_id_col or self._sup_col
+        freq_word = _FREQ_MAP[self._freq]
 
         rows: list[dict] = []
         for period in self._periods:
             edges = _edges_for_period(
-                self.con, self._table_name, emp, sup, self._date_col, period
+                self.con, self._table_name, emp, sup, self._date_col, period, self._freq
             )
             df = edges.df()
             n_emp = df[emp].nunique() + df[sup].nunique()  # nodes appearing in edges
             # Also count from the snapshot to get total employees
             snap_df = self.con.sql(f"""
                 SELECT DISTINCT {_quote(emp)} AS e FROM {self._table_name}
-                WHERE date_trunc('month', CAST({_quote(self._date_col)} AS DATE))
+                WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
                       = CAST('{period}' AS DATE)
             """).df()
             n_total = len(snap_df)
@@ -560,7 +570,7 @@ class DuckONATemporal:
             for period in periods:
                 edges = _edges_for_period(
                     self.con, self._table_name, self._emp_col, self._sup_col,
-                    self._date_col, period,
+                    self._date_col, period, self._freq,
                 )
                 if edges.count("*").fetchone()[0] == 0:
                     continue
@@ -680,6 +690,7 @@ class DuckONATemporal:
             raise RuntimeError("call load_snapshots() first")
         n_periods, _ = _parse_lookback(lookback)
         use_periods = self._periods[-n_periods:] if len(self._periods) >= n_periods else self._periods
+        freq_word = _FREQ_MAP[self._freq]
 
         emp = self._emp_col
         sup = self._sup_col
@@ -689,7 +700,7 @@ class DuckONATemporal:
         for p in use_periods:
             df = self.con.sql(f"""
                 SELECT * FROM {self._table_name}
-                WHERE date_trunc('month', CAST({_quote(self._date_col)} AS DATE))
+                WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
                       = CAST('{p}' AS DATE)
             """).df()
             df["_period"] = p
@@ -835,6 +846,9 @@ class DuckONATemporal:
         use_periods = self._periods[-n_periods:] if len(self._periods) >= n_periods else self._periods
         emp = self._emp_col
         sup = self._sup_col
+        freq_word = _FREQ_MAP[self._freq]
+        freq_word = _FREQ_MAP[self._freq]
+        freq_word = _FREQ_MAP[self._freq]
 
         rows: list[dict] = []
         prev_sup = None
@@ -844,7 +858,7 @@ class DuckONATemporal:
         for p in use_periods:
             df = self.con.sql(f"""
                 SELECT * FROM {self._table_name}
-                WHERE date_trunc('month', CAST({_quote(self._date_col)} AS DATE))
+                WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
                       = CAST('{p}' AS DATE)
                   AND {_quote(emp)} = '{employee_id}'
             """).df()
@@ -903,12 +917,13 @@ class DuckONATemporal:
         use_periods = self._periods[-n_periods:] if len(self._periods) >= n_periods else self._periods
         emp = self._emp_col
         sup = self._sup_col
+        freq_word = _FREQ_MAP[self._freq]
 
         rows: list[dict] = []
         for p in use_periods:
             df = self.con.sql(f"""
                 SELECT * FROM {self._table_name}
-                WHERE date_trunc('month', CAST({_quote(self._date_col)} AS DATE))
+                WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
                       = CAST('{p}' AS DATE)
                   AND {_quote(emp)} = '{employee_id}'
             """).df()
@@ -928,7 +943,7 @@ class DuckONATemporal:
             if mgr_id is not None:
                 mgr_df = self.con.sql(f"""
                     SELECT * FROM {self._table_name}
-                    WHERE date_trunc('month', CAST({_quote(self._date_col)} AS DATE))
+                    WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
                           = CAST('{p}' AS DATE)
                       AND {_quote(emp)} = '{mgr_id}'
                 """).df()
@@ -940,7 +955,7 @@ class DuckONATemporal:
                 snap_rel = self.con.sql(f"""
                     SELECT {_quote(emp)} AS employee_id, {_quote(sup)} AS supervisor_id
                     FROM {self._table_name}
-                    WHERE date_trunc('month', CAST({_quote(self._date_col)} AS DATE))
+                    WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
                           = CAST('{p}' AS DATE)
                 """)
                 try:
@@ -1006,13 +1021,14 @@ class DuckONATemporal:
         use_periods = self._periods[-n_periods:] if len(self._periods) >= n_periods else self._periods
         emp = self._emp_col
         sup = self._sup_col
+        freq_word = _FREQ_MAP[self._freq]
 
         # Gather per-employee mobility events
         snapshots: list[pd.DataFrame] = []
         for p in use_periods:
             df = self.con.sql(f"""
                 SELECT * FROM {self._table_name}
-                WHERE date_trunc('month', CAST({_quote(self._date_col)} AS DATE))
+                WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
                       = CAST('{p}' AS DATE)
             """).df()
             df["_period"] = p
@@ -1162,6 +1178,7 @@ class DuckONATemporal:
         use_periods = self._periods[-n_periods:] if len(self._periods) >= n_periods else self._periods
         emp = self._emp_col
         sup = self._sup_col
+        freq_word = _FREQ_MAP[self._freq]
 
         # Gather all managers (anyone who is a supervisor in any period)
         managers: set = set()
@@ -1169,7 +1186,7 @@ class DuckONATemporal:
             df = self.con.sql(f"""
                 SELECT DISTINCT {_quote(sup)} AS mgr
                 FROM {self._table_name}
-                WHERE date_trunc('month', CAST({_quote(self._date_col)} AS DATE))
+                WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
                       = CAST('{p}' AS DATE)
                   AND {_quote(sup)} IS NOT NULL
                   AND CAST({_quote(sup)} AS VARCHAR) <> ''
@@ -1195,7 +1212,7 @@ class DuckONATemporal:
             for p in use_periods:
                 subtree = _subtree_ids(
                     self.con, self._table_name, emp, sup,
-                    self._date_col, mgr_id, p,
+                    self._date_col, mgr_id, p, self._freq,
                 )
                 if not subtree:
                     period_engagements.append(np.nan)
@@ -1209,7 +1226,7 @@ class DuckONATemporal:
                 # Manager's own level
                 mgr_row = self.con.sql(f"""
                     SELECT * FROM {self._table_name}
-                    WHERE date_trunc('month', CAST({_quote(self._date_col)} AS DATE))
+                    WHERE date_trunc('{freq_word}', CAST({_quote(self._date_col)} AS DATE))
                           = CAST('{p}' AS DATE)
                       AND {_quote(emp)} = '{mgr_id}'
                 """).df()
@@ -1223,7 +1240,7 @@ class DuckONATemporal:
                         SELECT AVG(engagement) AS avg_eng
                         FROM {survey_tbl}
                         WHERE employee_id IN ({placeholders})
-                          AND date_trunc('month', CAST(snapshot_date AS DATE))
+                          AND date_trunc('{freq_word}', CAST(snapshot_date AS DATE))
                               = CAST('{p}' AS DATE)
                     """).df()
                     avg_eng = eng_df["avg_eng"].iloc[0] if not eng_df.empty else np.nan
@@ -1250,11 +1267,11 @@ class DuckONATemporal:
             for i in range(len(use_periods) - 1):
                 sub_t = set(_subtree_ids(
                     self.con, self._table_name, emp, sup,
-                    self._date_col, mgr_id, use_periods[i],
+                    self._date_col, mgr_id, use_periods[i], self._freq,
                 ))
                 sub_t1 = set(_subtree_ids(
                     self.con, self._table_name, emp, sup,
-                    self._date_col, mgr_id, use_periods[i + 1],
+                    self._date_col, mgr_id, use_periods[i + 1], self._freq,
                 ))
                 if sub_t:
                     retained = len(sub_t & sub_t1) / len(sub_t)

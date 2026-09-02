@@ -433,7 +433,7 @@ class DuckONA:
             )
 
         # Optional active_as_of filter when a date column exists.
-        where_clause = ""
+        filters: list[str] = []
         if active_as_of is not None:
             candidate_cols = [c for c in cols if "date" in c.lower()]
             if candidate_cols:
@@ -442,9 +442,14 @@ class DuckONA:
                 as_of_str = _coerce_date(active_as_of)
                 if as_of_str is None:
                     raise ValueError(f"active_as_of not parseable as date: {active_as_of!r}")
-                where_clause = (
-                    f"WHERE CAST({date_quoted} AS DATE) <= CAST('{as_of_str.isoformat()}' AS DATE)"
+                filters.append(
+                    f"CAST({date_quoted} AS DATE) <= CAST('{as_of_str.isoformat()}' AS DATE)"
                 )
+
+        # Drop rows where supervisor is NULL or empty.
+        filters.append(f"{sup} IS NOT NULL")
+        filters.append(f"CAST({sup} AS VARCHAR) <> ''")
+        where_clause = "WHERE " + " AND ".join(filters)
 
         sql = f"""
             SELECT DISTINCT
@@ -453,8 +458,6 @@ class DuckONA:
             FROM {table_name}
             {where_clause}
         """
-        # Drop rows where supervisor is NULL or empty.
-        sql += f"\n            WHERE {sup} IS NOT NULL AND CAST({sup} AS VARCHAR) <> ''"
         return self.con.sql(sql)
 
     # ── Graph metric wrappers ───────────────────────────────────────────────

@@ -245,6 +245,14 @@ class TestOrgEdges:
         assert set(edges.df().columns) == {"emp", "mgr"}
         assert edges.df()["emp"].tolist() == ["B"]
 
+    def test_build_org_edges_active_as_of_filter(self, ona: DuckONA, hris_df: pd.DataFrame):
+        ona.load_hris(hris_df)
+        edges = ona.build_org_edges(active_as_of="2019-03-01")
+        df = edges.df()
+        assert len(df) == 1
+        assert df.iloc[0]["employee_id"] == "E010"
+        assert df.iloc[0]["supervisor_id"] == "E001"
+
 
 # ─── Graph metrics ──────────────────────────────────────────────────────────
 

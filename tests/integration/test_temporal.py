@@ -152,6 +152,23 @@ class TestComputeTemporalMetrics:
         assert ts["metric"].nunique() == 1
         assert ts["value"].max() > 0
 
+    def test_quarterly_period_alignment_not_empty(self) -> None:
+        q_end = pd.DataFrame(
+            {
+                "employee_id": ["E1", "E2", "E1", "E2"],
+                "supervisor_id": [None, "E1", None, "E1"],
+                "snapshot_date": pd.to_datetime(
+                    ["2026-03-31", "2026-03-31", "2026-06-30", "2026-06-30"]
+                ),
+            }
+        )
+        dt = DuckONATemporal()
+        periods = dt.load_snapshots(q_end, snapshot_date_col="snapshot_date", freq="Q")
+        ts = dt.compute_temporal_metrics(metrics=["pagerank"])
+        assert periods == ["2026-01-01", "2026-04-01"]
+        assert len(ts) > 0
+        assert ts["period"].nunique() == 2
+
 
 class TestNetworkEvolution:
     def test_returns_expected_columns(self, dt_basic: DuckONATemporal) -> None:
