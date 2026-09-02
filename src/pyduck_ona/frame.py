@@ -179,7 +179,7 @@ class DuckONAFrame:
         table_name: str = "snapshots",
     ) -> DuckONAFrame:
         """Load snapshot data and wire up a temporal engine on this frame."""
-        dt = _temporal.DuckONATemporal(self.con)
+        dt = _temporal.DuckONATemporal._from_connection(self.con)
         dt.load_snapshots(
             df,
             snapshot_date_col=snapshot_date_col,
@@ -231,7 +231,7 @@ class DuckONAFrame:
         supervisor_id_col: str = "supervisor_id",
     ) -> pd.DataFrame:
         """Compute temporal ONA metrics across loaded snapshots."""
-        dt = _temporal.DuckONATemporal(self.con)
+        dt = _temporal.DuckONATemporal._from_connection(self.con)
         dt._table_name = self.source or "snapshots"
         dt._emp_col = employee_id_col
         dt._sup_col = supervisor_id_col
@@ -266,7 +266,7 @@ class DuckONAFrame:
     ) -> DuckONAFrame:
         """Register the current (or supplied) relation as a named table."""
         src = rel if rel is not None else self.relation()
-        return self._emit(src, as_pandas=False, output=table_name)
+        return self._emit(src, as_pandas=False, output=table_name)  # type: ignore[return-value]
 
     # ─── Pipeline combinator ──────────────────────────────────────────────
 

@@ -244,6 +244,22 @@ class DuckONATemporal:
         # Query primitives namespace (20 tools across 5 categories)
         self.q = _QueryPrimitives(self)
 
+    @classmethod
+    def _from_connection(cls, con: duckdb.DuckDBPyConnection) -> DuckONATemporal:
+        """Internal factory that wraps an existing DuckDB connection."""
+        inst = cls.__new__(cls)
+        inst.con = con
+        inst._table_name = "snapshots"
+        inst._emp_col = "employee_id"
+        inst._sup_col = "supervisor_id"
+        inst._date_col = "snapshot_date"
+        inst._freq = "Q"
+        inst._periods = []
+        inst._loaded = False
+        inst._extra_tables = {}
+        inst.q = _QueryPrimitives(inst)
+        return inst
+
     # ── Loading ─────────────────────────────────────────────────────────────
 
     def load_snapshots(
