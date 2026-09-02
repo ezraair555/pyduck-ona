@@ -254,6 +254,21 @@ class TestOrgEdges:
         assert df.iloc[0]["supervisor_id"] == "E001"
 
 
+class TestJanitorBridge:
+    def test_from_janitor_reuses_relation(self, hris_df: pd.DataFrame):
+        janitor_mod = pytest.importorskip("pyduck_janitor")
+        DuckJanitor = janitor_mod.DuckJanitor
+        dj = DuckJanitor.from_pandas(hris_df)
+        ona = DuckONA.from_janitor(dj)
+        edges = ona.build_org_edges()
+        assert len(edges.df()) == 6
+        assert ona.con is dj._connection
+
+    def test_from_janitor_type_guard(self):
+        with pytest.raises(TypeError, match="DuckJanitor-like"):
+            DuckONA.from_janitor(object())
+
+
 # ─── Graph metrics ──────────────────────────────────────────────────────────
 
 class TestGraphMetrics:

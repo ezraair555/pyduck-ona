@@ -144,6 +144,47 @@ class DuckONA:
         self._register_hris: pd.DataFrame | None = None
         self._table_names: set[str] = set()
 
+    @classmethod
+    def from_janitor(
+        cls,
+        janitor_obj: Any,
+        *,
+        hris_table: str = "hris",
+    ) -> "DuckONA":
+        """Create a DuckONA workspace from a live ``pyduck_janitor.DuckJanitor``.
+
+        Parameters
+        ----------
+        janitor_obj : Any
+            A ``DuckJanitor`` instance (duck-typed). The object must
+            expose ``_relation`` and ``_connection`` attributes.
+        hris_table : str, default "hris"
+            Target table name registered in the returned ``DuckONA``
+            workspace.
+
+        Returns
+        -------
+        DuckONA
+            ``DuckONA`` instance bound to the same DuckDB connection
+            as the incoming janitor object.
+        """
+        _validate_table_name(hris_table)
+        relation = getattr(janitor_obj, "_relation", None)
+        connection = getattr(janitor_obj, "_connection", None)
+        if relation is None or connection is None:
+            raise TypeError(
+                "from_janitor expects a DuckJanitor-like object with "
+                "'_relation' and '_connection' attributes"
+            )
+
+        inst = cls.__new__(cls)
+        inst.con = connection
+        inst._register_hris = None
+        inst._table_names = set()
+        inst.con.execute(f"CREATE OR REPLACE TABLE {hris_table} AS SELECT * FROM relation")
+        inst._table_names.add(hris_table)
+        return inst
+
     # ── Loader helpers ──────────────────────────────────────────────────────
 
     def _register_df(

@@ -72,11 +72,11 @@ print(stats.df().sort_values("direct_reports", ascending=False).head(10))
 
 ```python
 import pyduck_ona as pona
+from pyduck_janitor import DuckJanitor
 
-(pona.from_relation(rel)                  # if/when janitor flavor ships
-   .clean_names()
-   .hierarchy_valid("employee_id", "supervisor_id")
-   .filter("issue_type = 'broken_chain'"))
+dj = DuckJanitor.from_pandas(raw_hris).clean_names()
+ona = pona.DuckONA.from_janitor(dj, hris_table="hris")
+issues = pona.hierarchy_valid(ona.table("hris"), "employee_id", "supervisor_id")
 ```
 
 ## Short aliases (optional)
@@ -247,6 +247,11 @@ pyduck_ona/
                        # chi_square / plot_* / tidy_to_duckdb
                        # (broom-sm backed; optional [broom] extra)
 ```
+
+## v0.3 API unification draft
+
+See [`docs/v0.3_api_contract.md`](docs/v0.3_api_contract.md) for the proposed
+uniform verb taxonomy, return-schema contract, and janitor bridge standards.
 
 ## SQL safety
 
