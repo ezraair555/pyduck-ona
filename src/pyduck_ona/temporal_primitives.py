@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
 from pyduck_ona import graph as _graph
 from pyduck_ona.core import hierarchy_stats
+from pyduck_ona.sql_builder import build_period_edges_query, period_filter, quote_identifier
 
 _FREQ_WORD_MAP = {"M": "month", "Q": "quarter", "Y": "year"}
 
@@ -56,16 +57,14 @@ def _period_edges(
     freq_word: str = "month",
 ) -> DuckDBPyRelation:
     """Return the edge relation for a single period."""
-    return con.sql(f"""
-        SELECT DISTINCT
-            "{emp_col}" AS "{emp_col}",
-            "{sup_col}" AS "{sup_col}"
-        FROM {table}
-        WHERE date_trunc('{freq_word}', CAST("{date_col}" AS DATE))
-              = CAST('{period}' AS DATE)
-          AND "{sup_col}" IS NOT NULL
-          AND CAST("{sup_col}" AS VARCHAR) <> ''
-    """)
+    sql, params = build_period_edges_query(
+        table, emp_col, sup_col, date_col, period, freq_word
+    )
+    sql += (
+        f"\n  AND {quote_identifier(sup_col)} IS NOT NULL"
+        f"\n  AND CAST({quote_identifier(sup_col)} AS VARCHAR) <> ''"
+    )
+    return con.sql(sql, params=params)
 
 
 def _period_employees(
@@ -79,13 +78,14 @@ def _period_employees(
 ) -> DuckDBPyRelation:
     """Return employees present in a single period, with optional extra cols."""
     cols = [emp_col] + (extra_cols or [])
-    col_list = ", ".join(f'"{c}"' for c in cols)
-    return con.sql(f"""
+    col_list = ", ".join(quote_identifier(c) for c in cols)
+    filter_sql, params = period_filter(date_col, freq_word, period)
+    sql = f"""
         SELECT DISTINCT {col_list}
-        FROM {table}
-        WHERE date_trunc('{freq_word}', CAST("{date_col}" AS DATE))
-              = CAST('{period}' AS DATE)
-    """)
+        FROM {quote_identifier(table)}
+        WHERE {filter_sql}
+    """.strip()
+    return con.sql(sql, params=params)
 
 
 def _metric_fn_map() -> dict:
@@ -119,7 +119,7 @@ def _compute_metric_for_period(
     freq_word: str = "month",
 ) -> pd.DataFrame:
     """Compute one metric for one period, return DataFrame with id + value."""
-    edges = _period_edges(con, table, emp_col, sup_col, date_col, period)
+    edges = _period_edges(con, table, emp_col, sup_col, date_col, period, freq_word=freq_word)
     if edges.count("*").fetchone()[0] == 0:
         return pd.DataFrame(columns=["employee_id", metric])
     fn = _metric_fn_map().get(metric)
@@ -130,13 +130,14 @@ def _compute_metric_for_period(
         out = df.rename(columns={id_col: "employee_id", val_col: metric})
         return out[["employee_id", metric]]
     if metric == "team_size":
+        filter_sql, params = period_filter(date_col, freq_word, period)
         stats_rel = hierarchy_stats(
-            con.sql(f"""
-                SELECT "{emp_col}" AS employee_id, "{sup_col}" AS supervisor_id
-                FROM {table}
-                WHERE date_trunc('{freq_word}', CAST("{date_col}" AS DATE))
-                      = CAST('{period}' AS DATE)
-            """),
+            con.sql(
+                f"SELECT {quote_identifier(emp_col)} AS employee_id, "
+                f"{quote_identifier(sup_col)} AS supervisor_id "
+                f"FROM {quote_identifier(table)} WHERE {filter_sql}",
+                params=params,
+            ),
             "employee_id", "supervisor_id",
         )
         sdf = stats_rel.df()
