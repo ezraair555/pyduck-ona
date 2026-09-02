@@ -99,13 +99,19 @@ def _nx_digraph(edges: DuckDBPyRelation, source_col: str, target_col: str):
     return graph
 
 
-def _wrap_as_relation(df) -> DuckDBPyRelation:
+def _wrap_as_relation(
+    df,
+    con: duckdb.DuckDBPyConnection | None = None,
+) -> DuckDBPyRelation:
     """Round-trip a pandas DataFrame through DuckDB to get a relation.
 
     Used so every graph function returns the same type regardless of
-    whether the answer came from NX or DuckPGQ.
+    whether the answer came from NX or DuckPGQ. When ``con`` is supplied,
+    the relation is created on that connection so callers can chain on the
+    same database session.
     """
-    return duckdb.sql("SELECT * FROM df")
+    target = con if con is not None else duckdb
+    return target.sql("SELECT * FROM df")
 
 
 # ─── Algorithms ─────────────────────────────────────────────────────────────
@@ -118,6 +124,7 @@ def shortest_path(
     source: str,
     target: str,
     *,
+    con: duckdb.DuckDBPyConnection | None = None,
     backend: Literal["networkx", "duckpgq"] = "networkx",
 ) -> DuckDBPyRelation:
     """Shortest path between two nodes in the edge graph.
@@ -171,7 +178,7 @@ def shortest_path(
             [(source, target, None, "")],
             columns=["source", "target", "path_length", "path"],
         )
-        return _wrap_as_relation(result_df)
+        return _wrap_as_relation(result_df, con=con)
 
     try:
         node_path = nx.shortest_path(graph, source=source, target=target)
@@ -185,7 +192,7 @@ def shortest_path(
         [(source, target, length, path_str)],
         columns=["source", "target", "path_length", "path"],
     )
-    return _wrap_as_relation(result_df)
+    return _wrap_as_relation(result_df, con=con)
 
 
 def betweenness(
@@ -194,6 +201,7 @@ def betweenness(
     target_col: str,
     *,
     node_id_col: str = "node_id",
+    con: duckdb.DuckDBPyConnection | None = None,
     backend: Literal["networkx", "duckpgq"] = "networkx",
 ) -> DuckDBPyRelation:
     """Betweenness centrality for every node (broker detection).
@@ -231,7 +239,7 @@ def betweenness(
         [(node, float(score)) for node, score in scores.items()],
         columns=[node_id_col, "betweenness"],
     ).sort_values("betweenness", ascending=False, kind="mergesort")
-    return _wrap_as_relation(df)
+    return _wrap_as_relation(df, con=con)
 
 
 def pagerank(
@@ -241,6 +249,7 @@ def pagerank(
     *,
     damping: float = 0.85,
     node_id_col: str = "node_id",
+    con: duckdb.DuckDBPyConnection | None = None,
     backend: Literal["networkx", "duckpgq"] = "networkx",
 ) -> DuckDBPyRelation:
     """PageRank centrality (influence scoring).
@@ -277,7 +286,7 @@ def pagerank(
         [(node, float(score)) for node, score in scores.items()],
         columns=[node_id_col, "pagerank"],
     ).sort_values("pagerank", ascending=False, kind="mergesort")
-    return _wrap_as_relation(df)
+    return _wrap_as_relation(df, con=con)
 
 
 def connected_components(
@@ -285,6 +294,7 @@ def connected_components(
     source_col: str,
     target_col: str,
     *,
+    con: duckdb.DuckDBPyConnection | None = None,
     backend: Literal["networkx", "duckpgq"] = "networkx",
 ) -> DuckDBPyRelation:
     """Weakly-connected components in the edge graph.
@@ -324,7 +334,7 @@ def connected_components(
     components.sort(key=len, reverse=True)
     rows = [(int(idx), len(members), sorted(members)) for idx, members in enumerate(components)]
     df = pd.DataFrame(rows, columns=["component_id", "size", "members"])
-    return _wrap_as_relation(df)
+    return _wrap_as_relation(df, con=con)
 
 
 def eigenvector_centrality(
@@ -333,6 +343,7 @@ def eigenvector_centrality(
     target_col: str,
     *,
     node_id_col: str = "node_id",
+    con: duckdb.DuckDBPyConnection | None = None,
     backend: Literal["networkx", "duckpgq"] = "networkx",
 ) -> DuckDBPyRelation:
     """Eigenvector centrality for every node.
@@ -382,7 +393,7 @@ def eigenvector_centrality(
         [(node, float(score)) for node, score in scores.items()],
         columns=[node_id_col, "eigenvector"],
     ).sort_values("eigenvector", ascending=False, kind="mergesort")
-    return _wrap_as_relation(df)
+    return _wrap_as_relation(df, con=con)
 
 
 def degree_centrality(
@@ -392,6 +403,7 @@ def degree_centrality(
     *,
     mode: Literal["in", "out", "total"] = "out",
     node_id_col: str = "node_id",
+    con: duckdb.DuckDBPyConnection | None = None,
     backend: Literal["networkx", "duckpgq"] = "networkx",
 ) -> DuckDBPyRelation:
     """Degree centrality for every node.
@@ -437,7 +449,7 @@ def degree_centrality(
         [(node, float(score)) for node, score in scores.items()],
         columns=[node_id_col, "degree_centrality"],
     ).sort_values("degree_centrality", ascending=False, kind="mergesort")
-    return _wrap_as_relation(df)
+    return _wrap_as_relation(df, con=con)
 
 
 def louvain_communities(
@@ -448,6 +460,7 @@ def louvain_communities(
     weight_col: str | None = None,
     resolution: float = 1.0,
     node_id_col: str = "node_id",
+    con: duckdb.DuckDBPyConnection | None = None,
     backend: Literal["networkx", "duckpgq"] = "networkx",
 ) -> DuckDBPyRelation:
     """Louvain community detection on the edge graph.
@@ -512,4 +525,4 @@ def louvain_communities(
     df = pd.DataFrame(rows, columns=[node_id_col, "community_id"]).sort_values(
         ["community_id", node_id_col], kind="mergesort"
     )
-    return _wrap_as_relation(df)
+    return _wrap_as_relation(df, con=con)

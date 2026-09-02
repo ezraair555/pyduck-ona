@@ -16,7 +16,6 @@ The façade is additive: it does not replace ``DuckONA`` or
 
 from __future__ import annotations
 
-import uuid
 from typing import TYPE_CHECKING, Any
 
 import duckdb
@@ -97,12 +96,7 @@ class DuckONAFrame:
         if as_pandas:
             return rel.df()
         if output:
-            # Materialize on the frame's own connection so downstream
-            # pipeline steps can reference it by name regardless of which
-            # connection produced the relation.
-            tmp = f"_emit_{uuid.uuid4().hex[:8]}"
-            self.con.register(tmp, rel.df())
-            self.con.execute(f"CREATE OR REPLACE TABLE {output} AS SELECT * FROM {tmp}")
+            rel.create_view(output)
             self.source = output
             return self
         return rel
@@ -203,7 +197,7 @@ class DuckONAFrame:
         as_pandas: bool = False,
     ) -> DuckDBPyRelation | pd.DataFrame | DuckONAFrame:
         """Compute PageRank on the direct-edge relation."""
-        rel = _graph.pagerank(self.relation(), source_col, target_col)
+        rel = _graph.pagerank(self.relation(), source_col, target_col, con=self.con)
         rel = self._canonical(rel, "node_id", key)
         return self._emit(rel, as_pandas=as_pandas, output=output)
 
@@ -217,7 +211,7 @@ class DuckONAFrame:
         as_pandas: bool = False,
     ) -> DuckDBPyRelation | pd.DataFrame | DuckONAFrame:
         """Compute betweenness centrality on the direct-edge relation."""
-        rel = _graph.betweenness(self.relation(), source_col, target_col)
+        rel = _graph.betweenness(self.relation(), source_col, target_col, con=self.con)
         rel = self._canonical(rel, "node_id", key)
         return self._emit(rel, as_pandas=as_pandas, output=output)
 
