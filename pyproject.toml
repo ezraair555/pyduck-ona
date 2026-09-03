@@ -12,7 +12,7 @@ authors = [
     {name = "EzraAir555", email = "ezraair555@gmail.com"},
 ]
 maintainers = [
-    {name = "EzraAir555", email = "noreply@ezraair555.ai"},
+    {name = "EzraAir555", email = "ezraair555@gmail.com"},
 ]
 keywords = [
     "duckdb", "hr", "people-analytics", "organizational-network-analysis",
@@ -81,9 +81,10 @@ graph = [
 stats = [
     "statsmodels>=0.14",
 ]
-broom = [
-    "broom-sm @ git+https://github.com/ezraair555/broom-sm",
-]
+# NOTE: broom-sm is not on PyPI. It can be installed from GitHub:
+#   pip install "broom-sm @ git+https://github.com/ezraair555/broom-sm"
+# Do not add direct URL dependencies to [project.optional-dependencies];
+# PyPI rejects wheel metadata containing PEP 508 direct references.
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
@@ -93,9 +94,6 @@ dev = [
     "ruff>=0.3",
     "black>=24.0",
     "isort>=5.13",
-    # pyduck-janitor is referenced as a future integration target but
-    # is not on PyPI; install from GitHub so CI can resolve it.
-    "pyduck-janitor @ git+https://github.com/ezraair555/pyduck-janitor@v0.1.2",
     "statsmodels>=0.14",
 ]
 
@@ -111,7 +109,7 @@ where = ["src"]
 include = ["pyduck_ona*"]
 
 [tool.setuptools.package-data]
-pyduck_ona = ["py.typed"]
+pyduck_ona = ["py.typed", "viz/py.typed"]
 
 [tool.black]
 line-length = 100

@@ -46,7 +46,7 @@ _IDENT_SAFE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # remains usable without broom-sm.
 _BROOM_IMPORT_ERROR = (
     "broom-sm is required for pyduck_ona.stats.* functions. "
-    "Install with: pip install pyduck-ona[broom]  (or  pip install broom-sm)"
+    "Install with: pip install \"broom-sm @ git+https://github.com/ezraair555/broom-sm\""
 )
 
 

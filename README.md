@@ -38,9 +38,14 @@ equivalent that:
 pip install pyduck-ona              # core only
 pip install pyduck-ona[viz]         # + matplotlib + plotly + pyvis for visualization
 pip install pyduck-ona[graph]       # + DuckDB pinned to 1.3.1 (DuckPGQ ABI compatibility)
-pip install pyduck-ona[broom]       # + broom-sm for statistical modeling
 pip install pyduck-ona[dev]         # + testing + linting
 ```
+
+> **broom-sm note:** statistical-model helpers (`correlation`, `anova`,
+> `ols`, `logistic`, `chi_square`, `plot_*`) require the companion
+> [broom-sm](https://github.com/ezraair555/broom-sm) package. It is not on
+> PyPI; install it separately from GitHub:
+> `pip install "broom-sm @ git+https://github.com/ezraair555/broom-sm"`
 
 ## Quick start
 
@@ -505,7 +510,8 @@ pyduck_ona/
 │                      # DuckPGQ reserved slot)
 └── stats/             # correlation / anova / ols / logistic /
                        # chi_square / plot_* / tidy_to_duckdb
-                       # (broom-sm backed; optional [broom] extra)
+                       # (broom-sm backed; install broom-sm separately
+                       # from github.com/ezraair555/broom-sm)
 ```
 
 ## Visualization (pyduck_ona.viz)
@@ -552,8 +558,10 @@ DuckDB-native packages:
 - [pyduck-janitor](https://github.com/ezraair555/pyduck-janitor) —
   DuckDB-native data cleaning; bridges in via
   `DuckONA.from_janitor(...)`.
-- [broom-sm](https://github.com/ezraair555/broom-sm) — R-style tidy
-  statistical summaries behind the `[broom]` extra.
+- broom-sm — R-style tidy
+  statistical summaries. Install separately from
+  [github.com/ezraair555/broom-sm](https://github.com/ezraair555/broom-sm)
+  (not on PyPI).
 - `pyduck_ona.viz` — built in (this repo): publication-quality org
   charts, dashboards, and network maps (`pip install pyduck-ona[viz]`).
 
@@ -670,4 +678,5 @@ Maintained by EzraAir555.
   `hierarchy_wide`, `hierarchy_stats`.
 - Graph algorithms: `betweenness`, `pagerank`, `connected_components`,
   `shortest_path` (NetworkX backend, DuckPGQ slot reserved).
-- Stats integration via optional `broom-sm` extra.
+- Stats integration via optional `broom-sm` install
+  ([GitHub](https://github.com/ezraair555/broom-sm)).

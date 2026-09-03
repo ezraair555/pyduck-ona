@@ -102,6 +102,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `[graph]` extra tightened from `duckdb>=1.3,<1.4` to `duckdb==1.3.1`:
   the mirror has no v1.3.2 extension build, so fresh installs of the
   range pin previously failed with HTTP 404 on first `INSTALL duckpgq`.
+- **PyPI metadata cleanup:** removed the `broom` extra (broom-sm is
+  not on PyPI) and the `pyduck-janitor` git URL from the `dev` extra.
+  Direct PEP 508 references in wheel metadata cause PyPI rejection.
+  broom-sm and pyduck-janitor are now installed separately in CI from
+  their GitHub repos. `package-data` now explicitly includes
+  `viz/py.typed` alongside the top-level marker. Maintainer email
+  normalized to `ezraair555@gmail.com`.
+- Updated stats import error and README language to point users at the
+  broom-sm GitHub repo instead of the removed `[broom]` extra.
 - `is_duckpgq_supported_duckdb()` gate tightened from broad `1.3.x` to
   the exact supported semver (`1.3.1`), matching the mirror reality.
 - `scipy>=1.11` added to base dependencies: `networkx.pagerank()`
