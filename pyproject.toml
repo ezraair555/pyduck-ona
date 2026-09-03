@@ -39,6 +39,7 @@ dependencies = [
     "duckdb>=1.0",
     "pyarrow>=15.0",
     "networkx>=3.2",
+    "scipy>=1.11",
     "igraph>=0.11",
     "pandas>=2.0",
     "polars>=1.0",
@@ -54,12 +55,26 @@ viz = [
     "seaborn>=0.13",
 ]
 graph = [
-    # Currently a placeholder — DuckPGQ is not installable from the
-    # DuckDB community-extension registry on current releases. We keep
-    # the slot so the API surface stays stable; the NetworkX backend
-    # is already available from the runtime deps.
-    "duckpgq>=0.10; python_version < '0'",  # never matches; reserved
+    # Optional DuckPGQ-backend extra. Installs DuckPGQ as a DuckDB community
+    # extension (not a pip package), allowing the DuckPGQ-backed algorithms
+    # in `pyduck_ona.graph` to dispatch against a DuckDB-native property
+    # graph instead of the default NetworkX backend.
+    #
+    # ABI constraints:
+    #   - DuckPGQ v1.3.1 (2025-07-15) is the last published community build.
+    #     It is a C++ ABI-matched extension and DuckDB refuses cross-version
+    #     loads, so this extra pins DuckDB to the exact matching runtime.
+    #     Calling `pyduck_ona.graph.*` with `backend="duckpgq"` on other
+    #     DuckDB versions raises `ImportError` with install instructions.
+    #   - DuckPGQ is *not* in stock DuckDB core (verified on DuckDB 1.5.2).
+    #     It still ships as a community extension from the DuckPGQ mirror.
+    #
+    # The default NetworkX backend requires no extra install.
+    "duckdb==1.3.1",
 ]
+# DuckPGQ itself is not a PyPI package — it is a DuckDB community extension.
+# Install is handled at runtime by `pyduck_ona.graph.duckpgq_setup()` via the
+# DuckPGQ mirror; see `graph/_duckpgq_backend.py` for the implementation.
 stats = [
     "statsmodels>=0.14",
 ]

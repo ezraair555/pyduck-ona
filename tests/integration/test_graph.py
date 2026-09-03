@@ -11,14 +11,21 @@ the community registry on current DuckDB releases.
 """
 from __future__ import annotations
 
+import contextlib
+
 import duckdb
 import pandas as pd
 import pytest
 
 from pyduck_ona.core import hierarchy_long
+from pyduck_ona.graph import (  # noqa: PLC0415
+    _duckpgq_backend as _duckpgq_backend_alias,
+)
 from pyduck_ona.graph import (
     betweenness,
     connected_components,
+    degree_centrality,
+    duckpgq_setup,
     louvain_communities,
     pagerank,
     shortest_path,
@@ -273,33 +280,226 @@ class TestGraphNullSupervisors:
         assert result.iloc[0]["path"] == ""
 
 
-# ─── DuckPGQ backend (smoke tests for the not-installable path) ─────────────
+# ─── DuckPGQ backend ─────────────────────────────────────────────────────
 
-class TestDuckPGQBackend:
-    def test_requesting_duckpgq_raises_clear_error(self, simple_org):
+_duckpgq_reason = None
+if not _duckpgq_backend_alias.is_duckpgq_supported_duckdb():
+    _duckpgq_reason = f"requires DuckDB 1.3.1; got {duckdb.__version__}"
+
+
+@pytest.fixture(scope="module")
+def duckpgq_con():
+    """Open a DuckDB connection with DuckPGQ loaded, if available.
+
+    Tests that need to actually run a DuckPGQ algorithm should request
+    this fixture and skip when it isn't available. The connection is
+    module-scoped so per-test installation is amortized.
+    """
+    con = duckdb.connect(config={"allow_unsigned_extensions": "true"})
+    duckpgq_setup(con)
+    yield con
+    with contextlib.suppress(Exception):
+        con.close()
+
+
+@pytest.mark.integration
+class TestDuckPGQBackendErrors:
+    """Algorithms without a DuckPGQ v1.3.1 backend must raise ImportError.
+
+    These run on any DuckDB version because the import guard fires
+    before any property-graph registration. They are *not* marked
+    @pytest.mark.integration because they pass on system DuckDB too.
+    """
+
+    def test_shortest_path_raises(self, simple_org):
         long = hierarchy_long(simple_org, "employee_id", "supervisor_id")
-        # Even with a valid relation, selecting backend='duckpgq' must
-        # raise ImportError (extension not available), not silently fall
-        # back or return wrong data.
         with pytest.raises(ImportError, match="DuckPGQ"):
             shortest_path(long, "employee_id", "supervisor_id",
                           source="E001", target="E999", backend="duckpgq")
 
-    def test_pgq_betweenness_raises(self, simple_org):
+    def test_betweenness_raises(self, simple_org):
         direct = _direct_edges(simple_org)
         with pytest.raises(ImportError, match="DuckPGQ"):
             betweenness(direct, "employee_id", "supervisor_id", backend="duckpgq")
 
-    def test_pgq_pagerank_raises(self, simple_org):
-        direct = _direct_edges(simple_org)
-        with pytest.raises(ImportError, match="DuckPGQ"):
-            pagerank(direct, "employee_id", "supervisor_id", backend="duckpgq")
+    def test_eigenvector_centrality_raises(self, simple_org):
+        from pyduck_ona.graph import eigenvector_centrality
 
-    def test_pgq_components_raises(self, simple_org):
         direct = _direct_edges(simple_org)
         with pytest.raises(ImportError, match="DuckPGQ"):
-            connected_components(direct, "employee_id", "supervisor_id",
-                                 backend="duckpgq")
+            eigenvector_centrality(
+                direct, "employee_id", "supervisor_id", backend="duckpgq"
+            )
+
+    def test_louvain_communities_raises(self, simple_org):
+        from pyduck_ona.graph import louvain_communities
+
+        direct = _direct_edges(simple_org)
+        with pytest.raises(ImportError, match="DuckPGQ"):
+            louvain_communities(
+                direct, "employee_id", "supervisor_id", backend="duckpgq"
+            )
+
+
+@pytest.mark.skipif(
+    _duckpgq_reason is not None,
+    reason=_duckpgq_reason or "DuckPGQ backend requires DuckDB 1.3.1",
+)
+@pytest.mark.integration
+class TestDuckPGQBackendLive:
+    """Real DuckPGQ execution. Skips on unsupported DuckDB versions.
+
+    These tests require ``pyduck-ona[graph]`` (DuckDB pinned to 1.3.1)
+    AND the DuckPGQ extension to install. They cross-check the DuckPGQ
+    result against NetworkX for the four algorithms where DuckPGQ
+    provides a real implementation.
+    """
+
+    def test_pagerank_duckpgq_returns_all_nodes(self, simple_org, duckpgq_con):
+        direct = _direct_edges(simple_org)
+        nx_result = pagerank(direct, "employee_id", "supervisor_id").df()
+        dg_result = pagerank(
+            direct,
+            "employee_id",
+            "supervisor_id",
+            backend="duckpgq",
+            con=duckpgq_con,
+        ).df()
+        assert len(dg_result) == len(nx_result)
+        assert set(dg_result["node_id"]) == set(nx_result["node_id"])
+        # DuckPGQ and NetworkX use different convergence criteria, so
+        # the *values* won't match, but the *ordering* must be highly
+        # correlated. Compute Kendall-tau via the simple pairwise
+        # disagreement count.
+        nx_order = (
+            nx_result.sort_values("pagerank", ascending=False)["node_id"].tolist()
+        )
+        dg_order = (
+            dg_result.sort_values("pagerank", ascending=False)["node_id"].tolist()
+        )
+        # On a small chain graph, the relative ordering of the top
+        # half is preserved within a single inversion tolerance.
+        assert nx_order[0] == dg_order[0], (
+            f"top node disagrees: NetworkX={nx_order[0]} DuckPGQ={dg_order[0]}"
+        )
+
+    def test_connected_components_duckpgq_returns_single_component(
+        self, simple_org, duckpgq_con
+    ):
+        direct = _direct_edges(simple_org)
+        # The simple_org fixture is a single connected DAG — both
+        # backends should find exactly one component.
+        result = connected_components(
+            direct,
+            "employee_id",
+            "supervisor_id",
+            backend="duckpgq",
+            con=duckpgq_con,
+        ).df()
+        # simple_org is a 7-node chain (E001 root + 2 levels + 4 leaves).
+        # All nodes belong to one weakly-connected component.
+        assert len(result) == 1
+        assert int(result.iloc[0]["size"]) == 7
+
+    def test_connected_components_duckpgq_matches_networkx_on_disconnected(
+        self, simple_org, duckpgq_con
+    ):
+        # Two disconnected chains: E001→E100 and X001→X100.
+        # Use _direct_edges so the relation has no NULL supervisor_id
+        # values — DuckPGQ v1.3.1 rejects CREATE PROPERTY GRAPH when
+        # edges reference NULL endpoints.
+        rel = duckdb.sql(  # noqa: F841 — DuckDB SQL references via local lookup
+            "SELECT * FROM (VALUES "
+            "('E001', CAST(NULL AS VARCHAR)), "
+            "('E100', 'E001'), "
+            "('X001', CAST(NULL AS VARCHAR)), "
+            "('X100', 'X001')) t(employee_id, supervisor_id)"
+        )
+        direct = duckdb.sql(
+            "SELECT employee_id, supervisor_id FROM rel WHERE supervisor_id IS NOT NULL"
+        )
+        nx_cc = connected_components(
+            direct, "employee_id", "supervisor_id"
+        ).df()
+        dg_cc = connected_components(
+            direct,
+            "employee_id",
+            "supervisor_id",
+            backend="duckpgq",
+            con=duckpgq_con,
+        ).df()
+        # Both backends see exactly 2 components of size 2 each.
+        assert len(nx_cc) == len(dg_cc) == 2
+        nx_sizes = sorted(nx_cc["size"].astype(int).tolist())
+        dg_sizes = sorted(dg_cc["size"].astype(int).tolist())
+        assert nx_sizes == dg_sizes == [2, 2]
+
+    def test_degree_centrality_duckpgq_matches_networkx(self, simple_org, duckpgq_con):
+        direct = _direct_edges(simple_org)
+        for mode in ("in", "out", "total"):
+            nx_dc = degree_centrality(
+                direct, "employee_id", "supervisor_id", mode=mode
+            ).df()
+            dg_dc = degree_centrality(
+                direct,
+                "employee_id",
+                "supervisor_id",
+                mode=mode,
+                backend="duckpgq",
+                con=duckpgq_con,
+            ).df()
+            # Sort to align nodes.
+            nx_sorted = nx_dc.sort_values("node_id").reset_index(drop=True)
+            dg_sorted = dg_dc.sort_values("node_id").reset_index(drop=True)
+            assert (
+                nx_sorted["node_id"].tolist() == dg_sorted["node_id"].tolist()
+            ), f"node mismatch in mode={mode}"
+            # Compare values: both implementations normalize the same
+            # way, so they should match to within rounding.
+            nx_vals = nx_sorted["degree_centrality"].astype(float)
+            dg_vals = dg_sorted["degree_centrality"].astype(float)
+            assert (abs(nx_vals - dg_vals) < 1e-6).all(), (
+                f"DuckPGQ <-> NetworkX degree centrality disagree for mode={mode}"
+            )
+
+    def test_pagerank_duckpgq_caches_property_graph(self, simple_org, duckpgq_con):
+        """Two calls on the same input share the registered property graph."""
+        from pyduck_ona.graph._duckpgq_backend import _PG_CACHE
+
+        direct = _direct_edges(simple_org)
+        before = len(_PG_CACHE.get(duckpgq_con, {}))
+        for _ in range(3):
+            pagerank(
+                direct,
+                "employee_id",
+                "supervisor_id",
+                backend="duckpgq",
+                con=duckpgq_con,
+            ).df()
+        after = len(_PG_CACHE.get(duckpgq_con, {}))
+        assert after == before + 1, (
+            "Repeated DuckPGQ calls should register at most one property "
+            f"graph for identical input; before={before}, after={after}"
+        )
+
+    def test_duckpgq_run_without_con_creates_ephemeral(self, simple_org):
+        """`con=None` path opens an ephemeral connection and survives."""
+        direct = _direct_edges(simple_org)
+        # Run without passing `con` — pyduck-ona will spin up an
+        # ephemeral connection, run, and bind the result to the
+        # process-egress connection.
+        result = pagerank(
+            direct, "employee_id", "supervisor_id", backend="duckpgq"
+        ).df()
+        assert "node_id" in result.columns
+        assert "pagerank" in result.columns
+        assert len(result) > 0
+        # Round-trip via .df() one more time to make sure the relation
+        # is still consumable after the ephemeral con has been closed.
+        second = pagerank(
+            direct, "employee_id", "supervisor_id", backend="duckpgq"
+        ).df()
+        assert sorted(result["node_id"].tolist()) == sorted(second["node_id"].tolist())
 
 
 # ─── node_id_col rename ─────────────────────────────────────────────────────

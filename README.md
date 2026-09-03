@@ -408,14 +408,20 @@ pona.graph.pagerank(direct, "employee_id", "supervisor_id")
 pona.graph.connected_components(direct, "employee_id", "supervisor_id")
 ```
 
-### DuckPGQ backend (optional, currently unavailable)
+### DuckPGQ backend (optional)
 
-Each `pyduck_ona.graph.*` function accepts `backend="duckpgq"` for a
-DuckDB-native property-graph implementation. **DuckPGQ is not currently
-installable** from the DuckDB community-extension registry (HTTP 404 on
-current DuckDB releases; the extension is in flux after a major API
-rewrite). The NetworkX backend is the default and always available. The
-DuckPGQ slot is reserved so the API surface stays stable when it ships.
+`pyduck_ona.graph.pagerank`, `connected_components`, and
+`degree_centrality` accept `backend="duckpgq"` for a DuckDB-native
+property-graph implementation.
+
+- Install with `pip install pyduck-ona[graph]`.
+- The `[graph]` extra pins `duckdb==1.3.1` (exact ABI match for the
+  currently published DuckPGQ mirror build).
+- On other DuckDB versions, `backend="duckpgq"` raises a clear
+  `ImportError` with install instructions.
+
+NetworkX remains the default backend and works on modern DuckDB without
+the DuckPGQ extension.
 
 ### ERGM (deferred)
 
