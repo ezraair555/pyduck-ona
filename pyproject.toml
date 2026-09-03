@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyduck-ona"
-version = "0.2.0"
+version = "0.3.0"
 description = "DuckDB-native People Analytics and Organizational Network Analysis (ONA) for HR data"
 readme = "README.md"
 license = {text = "MIT"}
@@ -17,7 +17,8 @@ maintainers = [
 keywords = [
     "duckdb", "hr", "people-analytics", "organizational-network-analysis",
     "ona", "hierarchy", "span-of-control", "duckpgq", "broom",
-    "pyduck-janitor", "relational-api",
+    "pyduck-janitor", "relational-api", "org-chart", "dashboard",
+    "visualization",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -51,6 +52,8 @@ ml = [
 ]
 viz = [
     "matplotlib>=3.8",
+    "numpy>=1.24",
+    "plotly>=5.18",
     "pyvis>=0.3",
     "seaborn>=0.13",
 ]

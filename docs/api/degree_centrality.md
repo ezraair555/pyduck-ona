@@ -19,7 +19,11 @@ edges, source_col, target_col
 mode : {"in", "out", "total"}, default "out"
 node_id_col : str, default "node_id"
     Name of the node-id column in the returned relation.
-backend : {"networkx", "duckpgq"}
+backend : {"networkx", "duckpgq"}, default "networkx"
+    Algorithm backend. The DuckPGQ backend runs a pure DuckDB SQL
+    aggregation over the staged vertex + edge tables; requires
+    ``pip install pyduck-ona[graph]`` because the DuckPGQ extension
+    must be loaded for the property-graph registration plumbing.
 
 ## Returns
 

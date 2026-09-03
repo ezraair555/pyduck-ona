@@ -36,8 +36,8 @@ equivalent that:
 
 ```bash
 pip install pyduck-ona              # core only
-pip install pyduck-ona[viz]         # + matplotlib + pyvis for plotting
-pip install pyduck-ona[graph]       # (placeholder; DuckPGQ not currently available)
+pip install pyduck-ona[viz]         # + matplotlib + plotly + pyvis for visualization
+pip install pyduck-ona[graph]       # + DuckDB pinned to 1.3.1 (DuckPGQ ABI compatibility)
 pip install pyduck-ona[broom]       # + broom-sm for statistical modeling
 pip install pyduck-ona[dev]         # + testing + linting
 ```
@@ -315,6 +315,24 @@ pattern.
 | [`to_igraph`](docs/api/to_igraph.md) | Convert an edge relation into an igraph.Graph via Arrow |
 | [`to_networkx`](docs/api/to_networkx.md) | Convert an edge relation into a NetworkX graph via Arrow |
 
+### Visualization
+
+Requires the `[viz]` extras (`pip install pyduck-ona[viz]`). Full guide:
+[docs/viz_tutorial.md](docs/viz_tutorial.md).
+
+| Function | Description |
+|---|---|
+| [`attrition_heatmap`](docs/api/attrition_heatmap.md) | Render a department × job-level attrition heatmap |
+| [`centrality_dashboard`](docs/api/centrality_dashboard.md) | Plot a 2×2 grid comparing four centrality measures |
+| [`compensation_equity`](docs/api/compensation_equity.md) | Scatter of tenure (or level) vs salary, coloured by group, with regression |
+| [`hierarchy_depth_heatmap`](docs/api/hierarchy_depth_heatmap.md) | Render the hierarchy-wide table as a heatmap of depth vs employee |
+| [`org_chart_tree`](docs/api/org_chart_tree.md) | Return a standalone HTML string containing an interactive org chart |
+| [`reporting_chain_walk`](docs/api/reporting_chain_walk.md) | Plot the reporting chain from `employee_id` up to the top of the org |
+| [`silo_map`](docs/api/silo_map.md) | Render an organisational silo map |
+| [`span_of_control`](docs/api/span_of_control.md) | Plot span of control for the top `top_n` managers |
+| [`span_vs_depth`](docs/api/span_vs_depth.md) | Quadrant bubble chart of span × depth with team size as bubble area |
+| [`summary_dashboard`](docs/api/summary_dashboard.md) | Build a single-page HTML summary dashboard |
+
 ## Short aliases (optional)
 
 For convenience, the four hierarchy functions are also available as
@@ -489,6 +507,25 @@ pyduck_ona/
                        # chi_square / plot_* / tidy_to_duckdb
                        # (broom-sm backed; optional [broom] extra)
 ```
+
+## Visualization (pyduck_ona.viz)
+
+Ten publication-quality visualization entry points integrated from the
+former standalone `pyduck-ona-viz` package. Consumes `.df()` outputs of
+any pyduck-ona relation; returns matplotlib figures or standalone HTML
+(D3 org charts, Plotly dashboards, pyvis network maps).
+
+```python
+import pyduck_ona as pona
+import pyduck_ona.viz as viz
+
+stats_df = pona.hierarchy_stats(rel, "employee_id", "supervisor_id").df()
+fig = viz.span_of_control(stats_df, top_n=20)          # matplotlib Figure
+html = viz.summary_dashboard(stats_df)                  # one-page HTML
+```
+
+Requires `pip install pyduck-ona[viz]`. Full guide:
+[docs/viz_tutorial.md](docs/viz_tutorial.md).
 
 ## v0.3 API unification draft
 

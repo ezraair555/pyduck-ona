@@ -31,6 +31,7 @@ SECTION_ORDER = [
     ("graph", "Graph metrics"),
     ("stats", "Statistical modeling"),
     ("bridge", "Graph export"),
+    ("viz", "Visualization"),
     ("utility", "Utilities"),
 ]
 
@@ -64,7 +65,31 @@ CATEGORY_MAP: dict[str, str] = {
     "save_figure": "stats",
     "to_networkx": "bridge",
     "to_igraph": "bridge",
+    "org_chart_tree": "viz",
+    "reporting_chain_walk": "viz",
+    "span_of_control": "viz",
+    "span_vs_depth": "viz",
+    "hierarchy_depth_heatmap": "viz",
+    "centrality_dashboard": "viz",
+    "silo_map": "viz",
+    "attrition_heatmap": "viz",
+    "compensation_equity": "viz",
+    "summary_dashboard": "viz",
 }
+
+# Visualization subpackage exports (lazy; requires the [viz] extras).
+VIZ_EXPORTS = (
+    "org_chart_tree",
+    "reporting_chain_walk",
+    "span_of_control",
+    "span_vs_depth",
+    "hierarchy_depth_heatmap",
+    "centrality_dashboard",
+    "silo_map",
+    "attrition_heatmap",
+    "compensation_equity",
+    "summary_dashboard",
+)
 
 
 def _slug(name: str) -> str:
@@ -199,6 +224,10 @@ def main() -> int:
     public = [n for n in pona.__all__ if n != "__version__"]
     for public_name in public:
         obj = getattr(pona, public_name)
+        # Skip module objects (e.g. the lazy `viz` subpackage) — pages are
+        # emitted per function/class, not per module.
+        if inspect.ismodule(obj):
+            continue
         category = CATEGORY_MAP.get(public_name, "utility")
         module = getattr(obj, "__module__", "pyduck_ona")
         entries.append((public_name, obj, module, category))
@@ -210,6 +239,16 @@ def main() -> int:
                     continue
                 full = f"{public_name}.{method_name}"
                 entries.append((full, method, getattr(method, "__module__", module), category))
+
+    # Visualization subpackage (lazy extra; skipped when [viz] not installed)
+    try:
+        from pyduck_ona import viz as _viz_mod
+    except ImportError:
+        _viz_mod = None
+    if _viz_mod is not None:
+        for viz_name in VIZ_EXPORTS:
+            obj = getattr(_viz_mod, viz_name)
+            entries.append((viz_name, obj, getattr(obj, "__module__", "pyduck_ona.viz"), "viz"))
 
     # Write pages
     catalog: dict[str, list[tuple[str, str, str]]] = {}

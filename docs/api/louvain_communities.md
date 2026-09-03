@@ -22,14 +22,17 @@ resolution : float, default 1.0
     Louvain resolution parameter (higher = more / smaller communities).
 node_id_col : str, default "node_id"
     Name of the node-id column in the returned relation.
-backend : {"networkx", "duckpgq"}
+backend : {"networkx", "duckpgq"}, default "networkx"
+    Algorithm backend. DuckPGQ v1.3.1 does not expose a Louvain
+    table function; selecting ``backend="duckpgq"`` raises
+    :class:`ImportError`.
 
 ## Returns
 
 -------
 DuckDBPyRelation
-    Columns ``(node_id_col, community_id)`` sorted by community_id, then
-    node_id_col.
+    Columns ``(node_id_col, community_id)`` sorted by community_id,
+    then node_id_col.
 
 ## Example
 

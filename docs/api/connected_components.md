@@ -16,7 +16,11 @@ Weakly-connected components in the edge graph
 
 ----------
 edges, source_col, target_col
-backend : {"networkx", "duckpgq"}
+backend : {"networkx", "duckpgq"}, default "networkx"
+    Algorithm backend. The DuckPGQ backend runs DuckPGQ's
+    ``weakly_connected_component(graph, vlabel, elabel)`` on a
+    registered property graph; requires
+    ``pip install pyduck-ona[graph]``.
 
 ## Returns
 
@@ -37,7 +41,10 @@ import pyduck_ona as pona
 -----
 "Weakly connected" treats the graph as undirected for component
 purposes — appropriate for org charts where up/down direction is
-conventional but connectivity is what matters.
+conventional but connectivity is what matters. In a healthy org
+chart there should be exactly 1 component. More than 1 indicates
+multiple top-level hierarchies (acquired companies, business
+units, or — most often — data-quality issues).
 
 ---
 

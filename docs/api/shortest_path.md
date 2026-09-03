@@ -19,13 +19,14 @@ edges : DuckDBPyRelation
     Edge relation. Typically the output of
     :func:`pyduck_ona.core.hierarchy_long`.
 source_col, target_col : str
-    Column names in ``edges`` holding the source and target of each
-    directed edge.
+    Column names in ``edges`` holding the source and target of
+    each directed edge.
 source, target : str
     The two node IDs to find a path between.
 backend : {"networkx", "duckpgq"}, default "networkx"
-    Algorithm backend. DuckPGQ is not currently installable from
-    the community registry; selecting it raises ``ImportError``.
+    Algorithm backend. DuckPGQ v1.3.1 does not expose a multi-hop
+    shortest-path table function; selecting ``backend="duckpgq"``
+    raises :class:`ImportError`.
 
 ## Returns
 
@@ -39,7 +40,8 @@ DuckDBPyRelation
 
 --------
 >>> long = hierarchy_long(rel, "emp_id", "mgr_id")
->>> shortest_path(long, "employee_id", "supervisor_id", "E001", "E999").df()
+>>> shortest_path(long, "employee_id", "supervisor_id",
+...               "E001", "E999").df()
 
 ## Notes
 

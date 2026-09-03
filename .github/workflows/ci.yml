@@ -35,7 +35,7 @@ jobs:
       - name: Install package + typecheck deps
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev,viz]"
           pip install mypy
       - name: Run mypy
         run: mypy src/pyduck_ona
@@ -56,7 +56,7 @@ jobs:
       - name: Install package + test extras
         run: |
           python -m pip install --upgrade pip
-          # [broom] pulls broom-sm from git; [viz] for matplotlib in plot tests.
+          # [broom] pulls broom-sm from git; [viz] for matplotlib/plotly in viz tests.
           pip install -e ".[broom,viz,dev]"
       - name: Run pytest
         run: pytest tests/ -v --tb=short

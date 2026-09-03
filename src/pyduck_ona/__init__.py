@@ -9,10 +9,12 @@ Public API entry points:
     - hierarchy_valid / hierarchy_long / hierarchy_wide / hierarchy_stats
     - to_networkx / to_igraph (graph export)
     - broom_augment / broom_tidy (statistical-model integration)
+    - pyduck_ona.viz (visualization subpackage; requires the [viz] extra)
 """
 from __future__ import annotations
 
 from importlib import metadata as _md
+from typing import Any
 
 try:
     __version__ = _md.version("pyduck-ona")
@@ -103,5 +105,46 @@ __all__ = [
     "drop_vector_index",
     "vector_search",
     "fuzzy_join_vectors",
+    "viz",
     "__version__",
 ]
+
+# Visualization subpackage (integrated from pyduck-ona-viz v0.1.1).
+# Exposed lazily via PEP 562 so `import pyduck_ona` stays light and the
+# [viz] extras (matplotlib/pyvis/plotly) remain optional.
+_VIZ_EXPORTS = frozenset(
+    {
+        "org_chart_tree",
+        "reporting_chain_walk",
+        "span_of_control",
+        "span_vs_depth",
+        "hierarchy_depth_heatmap",
+        "centrality_dashboard",
+        "silo_map",
+        "attrition_heatmap",
+        "compensation_equity",
+        "summary_dashboard",
+        "PALETTE",
+        "CATEGORICAL",
+        "BLUES_CMAP",
+        "DIVERG_RYG",
+    }
+)
+
+
+def __getattr__(name: str) -> Any:
+    # NOTE: must use importlib.import_module here. `from pyduck_ona import
+    # viz` would re-enter __getattr__ (the attribute isn't set until the
+    # submodule import completes) and recurse infinitely.
+    if name == "viz" or name in _VIZ_EXPORTS:
+        import importlib
+
+        viz_mod = importlib.import_module("pyduck_ona.viz")
+        if name == "viz":
+            return viz_mod
+        return getattr(viz_mod, name)
+    raise AttributeError(f"module 'pyduck_ona' has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | _VIZ_EXPORTS | {"viz"})

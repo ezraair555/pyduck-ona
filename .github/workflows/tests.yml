@@ -27,7 +27,7 @@ jobs:
       - name: Install package + test extras
         run: |
           python -m pip install --upgrade pip
-          # [broom] pulls broom-sm from git; [viz] for matplotlib in plot tests.
+          # [broom] pulls broom-sm from git; [viz] for matplotlib/plotly in viz tests.
           pip install -e ".[broom,viz,dev]"
 
       - name: Run pytest
