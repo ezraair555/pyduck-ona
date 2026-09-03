@@ -539,6 +539,27 @@ All public functions validate column names against a strict regex
 pattern. SQL values are always bound via DuckDB's `?` parameter API, never
 string-interpolated. This means untrusted column names are safe.
 
+## Ecosystem
+
+`pyduck-ona` is the flagship of a small family of composable
+DuckDB-native packages:
+
+- [pyduck-ona-profile](https://github.com/ezraair555/pyduck-ona-profile)
+  — subject-centric, time-aware layer: per-employee `Subject` views with
+  PII role gating, `Timeline` event detectors (`as_of` / `between`), and
+  a local sentence-transformer `ask()` that turns plain-English HR
+  questions into DuckDB SQL (no LLM, 5–20 ms, nothing leaves the box).
+- [pyduck-janitor](https://github.com/ezraair555/pyduck-janitor) —
+  DuckDB-native data cleaning; bridges in via
+  `DuckONA.from_janitor(...)`.
+- [broom-sm](https://github.com/ezraair555/broom-sm) — R-style tidy
+  statistical summaries behind the `[broom]` extra.
+- `pyduck_ona.viz` — built in (this repo): publication-quality org
+  charts, dashboards, and network maps (`pip install pyduck-ona[viz]`).
+
+Layering: `pyduck-janitor` (clean) → `pyduck-ona` (analyze, visualize)
+→ `pyduck-ona-profile` (subject-centric views, NL query).
+
 ## License
 
 MIT — see LICENSE.
