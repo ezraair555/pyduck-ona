@@ -272,6 +272,7 @@ pattern.
 | [`DuckONATemporal.network_evolution`](docs/api/duckonatemporal_network_evolution.md) | Aggregate network-shape metrics per period |
 | [`DuckONATemporal.org_design_change_alerts`](docs/api/duckonatemporal_org_design_change_alerts.md) | Flag periods with potentially unhealthy organizational-design shifts |
 | [`DuckONATemporal.org_design_scorecard`](docs/api/duckonatemporal_org_design_scorecard.md) | Per-period organizational design metrics and a composite score |
+| [`DuckONATemporal.insight_report`](docs/api/duckonatemporal_insight_report.md) | Explainable, privacy-aware, shareable temporal ONA brief |
 | [`DuckONATemporal.sql`](docs/api/duckonatemporal_sql.md) | Run arbitrary SQL on the owned connection |
 
 ### Hierarchy primitives

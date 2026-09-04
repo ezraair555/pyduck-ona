@@ -378,3 +378,27 @@ pytest tests/integration/test_temporal_performance.py -v   # 6 scaling benchmark
 ---
 
 *Added 2026-08-27. Companion to `pyduck-ona` v0.1.5+.*
+## 9. `insight_report` - explainable and shareable change analysis
+
+For an aggregate-first executive or HRBP brief, combine the temporal metrics
+with structural drivers and demographic groups:
+
+```python
+report = dt.insight_report(
+    lookback="8Q",
+    metrics=["betweenness", "pagerank", "team_size"],
+    demographic_columns=["department", "job_level", "gender"],
+    min_group_size=10,
+)
+
+print(report.headline)
+report.driver_summary
+report.driver_effects       # affected vs. unaffected metric movement
+report.demographic_summary  # small cells are suppressed
+report.save("ona-insight.html")
+```
+
+The driver comparison is descriptive, not causal. It identifies where to
+investigate: for example, whether manager changes or exits coincide with
+network-position shifts. Use `include_individual=True` only for authorized
+analysts; shared reports omit employee-level movers by default.

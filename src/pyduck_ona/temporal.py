@@ -1719,6 +1719,31 @@ class DuckONATemporal:
 
         return pd.DataFrame(alerts)
 
+    def insight_report(
+        self,
+        *,
+        lookback: str = "8Q",
+        metrics: list[str] | None = None,
+        demographic_columns: list[str] | None = None,
+        min_group_size: int = 5,
+    ) -> Any:
+        """Build an explainable, aggregate-first report of temporal change.
+
+        The report decomposes manager/department/level changes and joins
+        endpoint network-metric movement to demographic groups. Driver effects
+        are descriptive associations, not causal estimates. Employee-level
+        details remain opt-in when rendering a report for sharing.
+        """
+        from pyduck_ona.insights import build_insight_report
+
+        return build_insight_report(
+            self,
+            lookback=lookback,
+            metrics=metrics,
+            demographic_columns=demographic_columns,
+            min_group_size=min_group_size,
+        )
+
     # ── Utility ─────────────────────────────────────────────────────────────
 
     def sql(self, query: str) -> DuckDBPyRelation:

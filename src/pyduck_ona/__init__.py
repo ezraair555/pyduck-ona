@@ -40,6 +40,7 @@ from pyduck_ona.graph import (
     pagerank,
     shortest_path,
 )
+from pyduck_ona.insights import ONAInsightReport, build_insight_report
 from pyduck_ona.search import (
     build_fts_index,
     build_vector_index,
@@ -105,6 +106,8 @@ __all__ = [
     "drop_vector_index",
     "vector_search",
     "fuzzy_join_vectors",
+    "ONAInsightReport",
+    "build_insight_report",
     "viz",
     "__version__",
 ]

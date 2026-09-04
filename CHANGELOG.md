@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `DuckONATemporal.insight_report()` builds an aggregate-first ONA brief with
+  structural driver decomposition, affected-versus-unaffected metric movement,
+  demographic summaries, small-cell suppression, and Markdown/HTML export.
+- Added regression coverage and documentation for explainable temporal ONA.
+
+### Changed
+- Replaced deprecated table-form MIT license metadata and the deprecated MIT
+  license classifier with the SPDX-style project license field.
+
 ## [0.3.0] - 2026-09-03
 
 ### Added (visualization subpackage)

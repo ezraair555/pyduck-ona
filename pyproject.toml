@@ -7,7 +7,7 @@ name = "pyduck-ona"
 version = "0.3.0"
 description = "DuckDB-native People Analytics and Organizational Network Analysis (ONA) for HR data"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "EzraAir555", email = "ezraair555@gmail.com"},
 ]
@@ -25,7 +25,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Intended Audience :: Human Resources Professionals",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",

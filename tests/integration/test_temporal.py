@@ -446,3 +446,27 @@ class TestSimulationRecovery:
                 f"VP1 score={vp1.iloc[0]['effectiveness_score']:.3f}; "
                 f"expected VP0 > VP1 (engagement trend was planted)"
             )
+
+class TestInsightReport:
+    def test_decomposes_change_and_suppresses_small_groups(self, dt_basic: DuckONATemporal) -> None:
+        report = dt_basic.insight_report(
+            lookback="4Q",
+            metrics=["betweenness"],
+            demographic_columns=["department"],
+            min_group_size=5,
+        )
+        assert report.periods == (dt_basic._periods[0], dt_basic._periods[-1])
+        assert {"joined", "exited", "manager_changed"} <= set(report.driver_summary["driver"])
+        assert {"metric", "driver", "mean_delta_difference"} <= set(report.driver_effects.columns)
+        assert {"demographic", "group", "metric", "suppressed"} <= set(report.demographic_summary.columns)
+        assert report.demographic_summary["suppressed"].any()
+
+    def test_report_exports_aggregate_first(self, dt_basic: DuckONATemporal, tmp_path) -> None:
+        report = dt_basic.insight_report(metrics=["pagerank"], demographic_columns=["department"])
+        markdown = report.to_markdown()
+        html = report.to_html()
+        assert "Interpretation Notes" in markdown
+        assert "Individual Metric Movers" not in markdown
+        assert "ONA Insight Brief" in html
+        path = report.save(tmp_path / "brief.md")
+        assert path.read_text(encoding="utf-8") == markdown
